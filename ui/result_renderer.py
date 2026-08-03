@@ -6,6 +6,8 @@ expanders, human-in-the-loop notice, redaction summary, export buttons)
 that previously lived in app.py. Streamlit rendering only - no business logic.
 """
 
+from html import escape
+
 import streamlit as st
 
 from governance.doc_class_policy import (
@@ -37,6 +39,26 @@ from ui.components import (
 )
 
 
+_SOURCE_QUOTE_STYLE = (
+    "border-left:3px solid #1f4e79;background:#f4f6f8;padding:6px 10px;"
+    "margin:2px 0 10px 18px;font-size:0.85rem;color:#31353b;"
+)
+
+
+def _render_source_quote(page: object, quote: str) -> None:
+    """Render a citation as a visually distinct source block.
+
+    The quote comes from an uploaded document, so it is escaped before being
+    placed into markup.
+    """
+    st.markdown(
+        f"<div style='{_SOURCE_QUOTE_STYLE}'>"
+        f"<strong>p.&nbsp;{escape(str(page))}</strong> &middot; &bdquo;{escape(quote)}&ldquo;"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def render_results(
     segment_results: list[dict],
     coverage: dict,
@@ -65,23 +87,38 @@ def render_results(
     # -----------------------------------------------------------------------
     # Coverage display
     # -----------------------------------------------------------------------
-    if citation_verify_mode == "disabled" or checks_ran == 0:
-        st.info(
-            f"Coverage: {coverage['pages_total']} pages total | "
-            f"{coverage['pages_extracted']} extracted | "
-            f"{coverage['chunks_sent']} chunks | {len(segment_results)} segments | "
-            f"claim-verified: n/a (verification disabled) | "
-            f"presence-verified: n/a (verification disabled) | "
-            f"citation_check_ran: false ({checks_ran}/{len(segment_results)}) | "
-            f"mode: {citation_verify_mode}"
-        )
-    else:
-        st.info(
-            f"Coverage: {coverage['pages_total']} pages total | "
-            f"{coverage['pages_extracted']} extracted | "
-            f"{coverage['chunks_sent']} chunks | {len(segment_results)} segments | "
-            f"{claim_verified_pct}% claim-verified | {presence_verified_pct}% presence-verified | "
-            f"citation_check_ran: {str(checks_ran > 0).lower()} ({checks_ran}/{len(segment_results)}) | "
+    # Headline numbers first; the raw counters stay available under "debug".
+    verification_ran = citation_verify_mode != "disabled" and checks_ran > 0
+    cov_cols = st.columns(4)
+    cov_cols[0].metric(
+        "Pages processed",
+        f"{coverage['pages_extracted']}/{coverage['pages_total']}",
+    )
+    cov_cols[1].metric("Documents found", len(segment_results))
+    cov_cols[2].metric(
+        "Claims with verified source",
+        f"{claim_verified_pct}%" if verification_ran else "n/a",
+        help=(
+            "Share of extracted statements whose citation was matched back to "
+            "the source text."
+            if verification_ran
+            else "Citation verification is disabled (DOCPIPE_CITATION_VERIFY)."
+        ),
+    )
+    cov_cols[3].metric(
+        "Quotes located in source",
+        f"{presence_verified_pct}%" if verification_ran else "n/a",
+        help=(
+            "Share of quoted snippets found verbatim on the cited page."
+            if verification_ran
+            else "Citation verification is disabled (DOCPIPE_CITATION_VERIFY)."
+        ),
+    )
+    if debug_mode:
+        st.caption(
+            f"chunks_sent: {coverage['chunks_sent']} | "
+            f"citation_check_ran: {str(checks_ran > 0).lower()} "
+            f"({checks_ran}/{len(segment_results)}) | "
             f"mode: {citation_verify_mode}"
         )
     if (
@@ -133,38 +170,44 @@ def render_results(
                 st.warning("Segment result could not be generated in structured form.")
                 continue
 
-            st.markdown("**1) Document metadata**")
-            segment_guess_display = (
-                doc_type_guess
-                if normalize_doc_class(doc_type_guess) != "Unklar"
-                else "not clear from segment"
+            meta_cols = st.columns(3)
+            meta_cols[0].caption(f"**Pages**  \n{start_page}-{end_page}")
+            meta_cols[1].caption(f"**Segmentation confidence**  \n{confidence:.0%}")
+            meta_cols[2].caption(
+                f"**Citation status**  \n{analysis.get('citation_status', 'n/a')}"
             )
-            st.caption(
-                f"Doc type (segment guess): {segment_guess_display} | "
-                f"Doc type (display): {display_doc_type} | "
-                f"Doc type (source): {display_doc_type_source} | "
-                f"Doc type (extraction): {_safe_text(str(analysis.get('dokumenttyp_parteien', '')))} | "
-                f"Segment page range: {start_page}-{end_page} | "
-                f"Confidence: {confidence:.2f} | Citation status: {analysis.get('citation_status', 'n/a')}"
-            )
-            st.caption(f"Heuristic: {reason}")
             if debug_mode:
+                segment_guess_display = (
+                    doc_type_guess
+                    if normalize_doc_class(doc_type_guess) != "Unklar"
+                    else "not clear from segment"
+                )
+                st.caption(
+                    f"Doc type (segment guess): {segment_guess_display} | "
+                    f"Doc type (display): {display_doc_type} | "
+                    f"Doc type (source): {display_doc_type_source} | "
+                    f"Doc type (extraction): "
+                    f"{_safe_text(str(analysis.get('dokumenttyp_parteien', '')))}"
+                )
+                st.caption(f"Heuristic: {reason}")
                 boundary_score = meta.get("boundary_score")
                 boundary_reasons = [str(r) for r in list(meta.get("boundary_reasons", []) or [])]
                 if boundary_score is not None:
                     st.caption(f"Boundary score: {float(boundary_score):.2f}")
                 if boundary_reasons:
                     st.caption(f"Boundary reasons: {' | '.join(boundary_reasons[:6])}")
-            st.caption(
-                f"Segment coverage: {seg_cov.get('pages_total', 0)} pages | {seg_cov.get('chunks_sent', 0)} chunks"
-            )
+                st.caption(
+                    f"Segment coverage: {seg_cov.get('pages_total', 0)} pages | "
+                    f"{seg_cov.get('chunks_sent', 0)} chunks"
+                )
+            st.divider()
 
             summary_tab, aktennotiz_tab, evidence_tab = st.tabs(
                 ["Summary", "Internal note", "Evidence"]
             )
             with summary_tab:
-                st.markdown("**Summary (neutral)**")
-                st.markdown("**Document type + parties (verified facts only)**")
+                st.markdown("##### Document type and parties")
+                st.caption("Verified facts only - every value below carries a source citation.")
                 st.markdown(
                     f"- Document type: {_safe_text(extract_document_type_for_render(analysis))}"
                 )
@@ -194,11 +237,12 @@ def render_results(
                                 _clean_quote(str(citation.get("quote_snippet", "") or ""))
                             )
                             if quote:
-                                st.markdown(f"  Source p. {page}: {quote}")
+                                _render_source_quote(page, quote)
                 else:
                     st.markdown("- not stated")
 
-                st.markdown("**Key facts (amounts / deadlines / dates)**")
+                st.markdown("##### Key facts")
+                st.caption("Amounts, deadlines and dates.")
                 # LLM-derived key facts take precedence; specific regex items are merged in as a supplement.
                 llm_eckdaten = _filter_llm_eckdaten(list(seg.get("llm_eckdaten") or []))
                 _regex_ev_fields = (
@@ -227,7 +271,8 @@ def render_results(
                     else:
                         st.markdown("- missing (follow-up required)")
 
-                st.markdown("**Overview (max. 7 bullet points, verified facts only)**")
+                st.markdown("##### Key statements")
+                st.caption("Up to 7 points, each backed by a citation.")
                 verified_overview = _verified_claims(
                     list(analysis.get("kernaussagen", [])), max_items=7
                 )
@@ -236,7 +281,8 @@ def render_results(
                 else:
                     st.markdown("- missing (follow-up required)")
 
-                st.markdown("**Open questions in the document**")
+                st.markdown("##### Open questions")
+                st.caption("Gaps and irregularities noted for human review.")
                 unclear_rendered = False
                 for item in list(analysis.get("missing_info", []))[:10]:
                     st.markdown(f"- {item}")

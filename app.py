@@ -7,6 +7,7 @@ no plaintext is logged - only a SHA-256 hash is stored.
 
 from dotenv import load_dotenv
 load_dotenv()
+import os
 from time import perf_counter
 
 from health import start_health_server as _start_health
@@ -43,17 +44,36 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 # Confidentiality notice (core requirement)
 # ---------------------------------------------------------------------------
+st.title("Document Analysis Pipeline")
+st.caption(
+    "AI extracts, code computes, a human decides - every extracted value "
+    "carries a citation back to its source page."
+)
+
 st.warning(
-    "**Confidentiality notice:** this system processes confidential documents. "
-    "Only a SHA-256 document hash is stored - never the full text or the "
-    "filename. Transmission to Azure OpenAI is encrypted (configurable EU "
-    "region endpoint). Input anonymization is optional and configurable "
-    "(sidebar). Generated summaries are suggestions only and do not replace "
-    "expert review by a qualified professional.",
+    "**Confidentiality notice:** documents are held in memory only. Just a "
+    "SHA-256 hash is written to the audit log - never the text or the "
+    "filename. Every output is a suggestion for human review, not a decision.",
     icon="⚠️",
 )
 
-st.title("Document Analysis Pipeline - Demo")
+
+def _demo_mode_enabled() -> bool:
+    raw = os.getenv("DOCPIPE_DEMO_MODE")
+    if raw is None:
+        return False
+    return str(raw).strip().lower() not in {"0", "false", "no", "off", ""}
+
+
+DEMO_MODE = _demo_mode_enabled()
+
+if DEMO_MODE:
+    st.info(
+        "**Demo mode:** analysis results are generated locally by a "
+        "deterministic stub, not by a language model. Set Azure credentials "
+        "in `.env` and unset `DOCPIPE_DEMO_MODE` for real analysis.",
+        icon="🧪",
+    )
 
 loaded_policy = load_policy()
 policy = loaded_policy.config
@@ -64,9 +84,14 @@ workflow = DocSummaryWorkflow()
 # ---------------------------------------------------------------------------
 with st.sidebar:
     st.header("Settings")
+    if DEMO_MODE:
+        st.info(
+            "🧪 Demo mode active: analysis is a local deterministic stub, "
+            "not a language model.",
+        )
     profile_labels = {
-        "balanced": "Safe (default)",
-        "strict": "Maximally safe (minimized)",
+        "balanced": "Balanced (default)",
+        "strict": "Strict (minimal data sent)",
     }
     can_override_profile = policy.dev_mode and policy.allow_ui_override
     if can_override_profile:
@@ -90,9 +115,9 @@ with st.sidebar:
     )
     if not can_override_profile:
         if effective_profile == "strict":
-            st.info("Mode: maximally safe (minimized)")
+            st.info("Mode: strict - minimal data sent to the model.")
         else:
-            st.info("Mode: safe (default) - only pseudonymized content is processed.")
+            st.info("Mode: balanced (default)")
         st.caption(f"Read-only from {loaded_policy.source_path.name}.")
 
     enable_redaction = st.toggle(
@@ -146,29 +171,30 @@ with st.sidebar:
 
     if enable_redaction:
         if must_use_redacted and runtime_config.redact_required:
-            st.success("Configurable EU-region endpoint - SHA-256 audit trail - pseudonymization active")
+            st.success("Pseudonymization active - names are masked before the model call.")
         elif not must_use_redacted:
             st.warning("LLM input: fast profile active (DEV/policy only).")
     else:
-        st.info("Configurable EU-region endpoint - SHA-256 audit trail - input anonymization disabled")
+        st.caption("Input anonymization is off - the model receives the original text.")
 
     with advanced_expander:
-        st.caption(
-            "classify_max_chars "
-            f"(legacy/separate classify call): {runtime_config.classify_max_chars_legacy}"
-        )
-        st.caption(
-            "segment_max_pages "
-            f"(legacy/no hard split): {runtime_config.segment_max_pages_legacy} | "
-            f"boundary_threshold: {runtime_config.segment_boundary_threshold}"
-        )
-        st.caption(
-            f"redact_required: {runtime_config.redact_required} | "
-            f"fail_closed: {runtime_config.fail_closed}"
-        )
-        st.caption(f"citation_verify_mode: {citation_verify_mode} (DOCPIPE_CITATION_VERIFY)")
-        if debug_mode and not allow_plaintext_preview:
-            st.caption("Plaintext preview stays disabled (ALLOW_PLAINTEXT_PREVIEW=0).")
+        if debug_mode:
+            st.caption(
+                "classify_max_chars "
+                f"(legacy/separate classify call): {runtime_config.classify_max_chars_legacy}"
+            )
+            st.caption(
+                "segment_max_pages "
+                f"(legacy/no hard split): {runtime_config.segment_max_pages_legacy} | "
+                f"boundary_threshold: {runtime_config.segment_boundary_threshold}"
+            )
+            st.caption(
+                f"redact_required: {runtime_config.redact_required} | "
+                f"fail_closed: {runtime_config.fail_closed}"
+            )
+            st.caption(f"citation_verify_mode: {citation_verify_mode} (DOCPIPE_CITATION_VERIFY)")
+            if not allow_plaintext_preview:
+                st.caption("Plaintext preview stays disabled (ALLOW_PLAINTEXT_PREVIEW=0).")
 
     st.divider()
     st.caption("Document Analysis Pipeline v0.1 - MVP demo")

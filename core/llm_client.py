@@ -19,8 +19,18 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency in tests
             raise ModuleNotFoundError("openai SDK is missing; please install requirements.")
 
 from core.config import get_config
+from core.demo_stub import build_demo_result
 from core.models import BaseModel, LLMResult, ValidationError
 from core.evidence import _neutralize_legal_tone, _coerce_non_negative_int
+
+
+def _demo_mode_enabled() -> bool:
+    """Reads DOCPIPE_DEMO_MODE live (not cached via get_config()) so tests
+    can flip it with monkeypatch.setenv without needing a config reset."""
+    raw = os.getenv("DOCPIPE_DEMO_MODE")
+    if raw is None:
+        return False
+    return str(raw).strip().lower() not in {"0", "false", "no", "off", ""}
 
 
 def _get_client() -> tuple[AzureOpenAI, str]:
@@ -72,7 +82,8 @@ def _ensure_env() -> None:
     if missing:
         raise EnvironmentError(
             f"Missing environment variables: {', '.join(missing)}. "
-            "Please copy .env.example to .env and fill it in."
+            "Please copy .env.example to .env and fill it in, "
+            "or set DOCPIPE_DEMO_MODE=1 to run with a local stub."
         )
 
 
@@ -108,6 +119,59 @@ def _extract_usage_counts(response: Any) -> tuple[int | None, int | None, int | 
     return total_tokens, prompt_tokens, completion_tokens
 
 
+def _invoke_json_task_demo(
+    *,
+    text: str,
+    system_prompt: str,
+    model_schema: type[BaseModel],
+) -> LLMResult:
+    """Demo-mode replacement for the Azure OpenAI round-trip.
+
+    Builds a schema-shaped payload locally (core.demo_stub.build_demo_result),
+    then runs it through the SAME validation + neutralization steps the real
+    path uses, so every downstream consumer (evidence mapping, citation
+    verification, export rendering) exercises its real code, exactly as if
+    a real model had answered. Deterministic: no randomness, no timestamps,
+    no network I/O. Token counts are a stable, input-length-derived stand-in
+    (not real usage) so nothing here can be mistaken for billed usage.
+    """
+    text_for_model, input_truncated = _trim_text_for_budget(text)
+    raw_payload = build_demo_result(
+        text=text_for_model,
+        system_prompt=system_prompt,
+        model_schema=model_schema,
+    )
+
+    try:
+        model = model_schema.model_validate(raw_payload)
+        parsed = _neutralize_legal_tone(model.model_dump())
+        output_type = "json_ok"
+    except ValidationError as exc:
+        parsed = {
+            "raw_text": str(raw_payload),
+            "parse_error": True,
+            "message": f"JSON schema invalid: {exc.errors()[0].get('msg', 'ValidationError')}",
+        }
+        output_type = "json_fallback"
+
+    # Deterministic pseudo-token count derived only from input length, so
+    # repeated runs and tests get a stable, reproducible number without
+    # pretending to be a real usage measurement.
+    token_count = max(1, len(text_for_model) // 4)
+
+    return LLMResult(
+        parsed=parsed,
+        token_count=token_count,
+        model="demo-stub",
+        output_type=output_type,
+        input_chars=len(text_for_model),
+        input_truncated=input_truncated,
+        prompt_tokens=token_count,
+        completion_tokens=0,
+        has_token_usage=True,
+    )
+
+
 def _invoke_json_task(
     *,
     text: str,
@@ -115,6 +179,13 @@ def _invoke_json_task(
     model_schema: type[BaseModel],
     max_output_tokens: int,
 ) -> LLMResult:
+    if _demo_mode_enabled():
+        return _invoke_json_task_demo(
+            text=text,
+            system_prompt=system_prompt,
+            model_schema=model_schema,
+        )
+
     _ensure_env()
     client, deployment = _get_client()
     text_for_model, input_truncated = _trim_text_for_budget(text)

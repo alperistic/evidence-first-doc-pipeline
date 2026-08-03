@@ -49,6 +49,16 @@ def _getenv_bool(name: str, default: bool) -> bool:
     return str(raw).strip().lower() not in {"0", "false", "no", "off"}
 
 
+def _is_demo_mode_enabled() -> bool:
+    """Mirrors core/llm_client.py::_demo_mode_enabled(). Duplicated (rather than
+    imported) to keep core/config.py free of a dependency on core/llm_client.py,
+    which itself imports core.config - importing it here would create a cycle."""
+    raw = os.getenv("DOCPIPE_DEMO_MODE")
+    if raw is None:
+        return False
+    return str(raw).strip().lower() not in {"0", "false", "no", "off", ""}
+
+
 def _load_dotenv() -> None:
     """Loads .env if python-dotenv is installed (not a hard requirement)."""
     try:
@@ -213,7 +223,18 @@ def get_config() -> AppConfig:
             # Feature flags
             allow_plaintext_preview=_getenv_bool("ALLOW_PLAINTEXT_PREVIEW", False),
             enable_fuzzy=_getenv_bool("ENABLE_FUZZY", False),
-            citation_verify=_getenv_bool("DOCPIPE_CITATION_VERIFY", False),
+            # Citation verification is the headline feature of this pipeline, so in
+            # demo mode (DOCPIPE_DEMO_MODE=1) it defaults to ON - otherwise the demo
+            # screenshot would show "n/a" for the single most important metric.
+            # This only changes the DEFAULT: if the operator has explicitly set
+            # DOCPIPE_CITATION_VERIFY (checked via `in os.environ`, which is True
+            # even for "0"/"false"), that explicit choice always wins, in demo
+            # mode or not. The production default (no demo mode, no explicit
+            # setting) is unchanged: False.
+            citation_verify=_getenv_bool(
+                "DOCPIPE_CITATION_VERIFY",
+                "DOCPIPE_CITATION_VERIFY" not in os.environ and _is_demo_mode_enabled(),
+            ),
             debug=_getenv_bool("DEBUG", False),
             debug_deadlines=_getenv_bool("DOCPIPE_DEBUG_DEADLINES", False),
             log_level=_getenv_str("LOG_LEVEL", "INFO").strip().upper(),

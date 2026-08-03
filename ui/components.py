@@ -3,6 +3,8 @@ ui/components.py – Reusable Streamlit render components for the pipeline.
 Contains UI helper functions that were factored out of app.py.
 """
 
+from html import escape
+
 import streamlit as st
 
 from core.citation import _normalize_item  # noqa: F401 – re-exported for app.py compat
@@ -19,21 +21,36 @@ from core.utils import _clean_quote
 from core.export_render import _is_generic_todo
 
 
+_CITATION_STYLE = (
+    "border-left:3px solid #1f4e79;background:#f4f6f8;padding:6px 10px;"
+    "margin:2px 0 10px 18px;font-size:0.85rem;color:#31353b;"
+)
+
+
 def _render_citations(citations: list[dict]) -> None:
-    for idx, citation in enumerate(citations, start=1):
-        page = citation.get("page_number", "?")
-        section_hint = (citation.get("section_hint") or "").strip()
+    """Render citations as source blocks.
+
+    Quotes originate from uploaded documents, so they are HTML-escaped before
+    being embedded in markup.
+    """
+    for citation in citations:
+        page = escape(str(citation.get("page_number", "?")))
+        section_hint = escape((citation.get("section_hint") or "").strip())
         quote = _clean_quote(citation.get("quote_snippet", ""))
 
-        headline = f"Evidence {idx} · p. {page}"
+        location = f"p.&nbsp;{page}"
         if section_hint:
-            headline += f" · {section_hint}"
-        st.caption(headline)
+            location += f" &middot; {section_hint}"
 
         if quote:
-            st.markdown(f"> {quote}")
+            body = f"&bdquo;{escape(quote)}&ldquo;"
         else:
-            st.caption("No displayable excerpt available.")
+            body = "<em>no displayable excerpt available</em>"
+
+        st.markdown(
+            f"<div style='{_CITATION_STYLE}'><strong>{location}</strong> &middot; {body}</div>",
+            unsafe_allow_html=True,
+        )
 
 
 def _render_evidence_map(evidence_map: list[dict]) -> None:
@@ -58,9 +75,11 @@ def _render_claim_items(items: list[dict], *, max_items: int | None = None) -> N
         if not text:
             continue
         st.markdown(f"– {text}")
-        if item.get("citations"):
-            with st.expander("Source / evidence", expanded=False):
-                _render_citations(item.get("citations", []))
+        citations = list(item.get("citations", []) or [])
+        if citations:
+            # Citations stay expanded: the point of the pipeline is that every
+            # statement shows its source without the reviewer having to dig.
+            _render_citations(citations)
         else:
             st.caption("unverified – evidence missing (follow-up required)")
 
@@ -114,7 +133,7 @@ def _render_aktenvermerk_block(analysis: dict, evidence_map: list[dict], *, show
     if verified_facts:
         _render_claim_items(verified_facts, max_items=10)
     else:
-        st.markdown("– missing (Rückfrage erforderlich)")
+        st.markdown("– missing (follow-up required)")
 
     st.markdown("**Deadlines / dates**")
     fristen = _dedupe_summary_items(_evidence_by_fields(
@@ -126,20 +145,20 @@ def _render_aktenvermerk_block(analysis: dict, evidence_map: list[dict], *, show
         for item in fristen:
             st.markdown(f"– {item.get('value')} (p. {item.get('page', '?')})")
     else:
-        st.markdown("– missing (Rückfrage erforderlich)")
+        st.markdown("– missing (follow-up required)")
 
     st.markdown("**Open questions (document-related)**")
     if analysis.get("auffaelligkeiten"):
         _render_claim_items(list(analysis.get("auffaelligkeiten", []))[:10], max_items=10)
     else:
-        st.markdown("– keine")
+        st.markdown("– none")
 
     st.markdown("**Follow-up questions for the client (missing info)**")
     if analysis.get("missing_info"):
         for item in list(analysis.get("missing_info", []))[:10]:
             st.markdown(f"– {item}")
     else:
-        st.markdown("– keine")
+        st.markdown("– none")
 
     st.markdown("**To-dos (work items)**")
     todos_filtered = [item for item in list(analysis.get("todos", []))[:10] if not _is_generic_todo(str(item))]
@@ -147,7 +166,7 @@ def _render_aktenvermerk_block(analysis: dict, evidence_map: list[dict], *, show
         for item in todos_filtered:
             st.markdown(f"– {item}")
     else:
-        st.markdown("– keine")
+        st.markdown("– none")
 
     if analysis.get("prueffragen"):
         st.markdown("**Questions to verify**")
