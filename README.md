@@ -14,8 +14,8 @@ review — never as a decision.
 Built for document workflows in regulated professions (law firms, tax advisors, property
 management) where an unsourced claim is worse than no answer at all.
 
-![The result view: verification metrics across the top, and every extracted value below
-carrying the page and the verbatim quote it came from.](docs/screenshot-result.png)
+![The result view: verification metrics across the top, extracted parties below with the
+page and verbatim quote each one came from, followed by the amounts and dates.](docs/screenshot-result.png)
 
 *Analysing a synthetic German lease in demo mode — no credentials, no real document.*
 
