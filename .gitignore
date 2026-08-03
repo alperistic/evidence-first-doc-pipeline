@@ -1,0 +1,49 @@
+# --- Secrets: never commit ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.toml
+.streamlit/secrets.toml
+
+# --- Runtime data: this project must not persist documents ---
+audit.db
+*.db
+*.sqlite
+*.sqlite3
+exports/
+uploads/
+run.log
+*.log
+
+# --- Real input documents: only synthetic samples belong in git ---
+pdfs/
+documents/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+env/
+
+# --- Editors / OS ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# --- Agent / local tooling state ---
+.claude/
+.remember/
+
+# --- Archives ---
+*.zip
+*.tar.gz

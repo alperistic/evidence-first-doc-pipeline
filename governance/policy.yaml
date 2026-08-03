@@ -1,0 +1,17 @@
+profile: balanced   # strict | balanced | fast
+dev_mode: false
+allow_ui_override: false
+classify_max_chars: 2000
+segment_max_pages: 12
+segment_chunk_max_chars: 12000
+segment_min_pages: 2
+segment_max_segments: 25
+segment_boundary_threshold: 2.4
+segment_boundary_cooldown_pages: 1
+segment_adaptive_threshold: true
+redact_required: true
+fail_closed: true
+
+# Optional (vorbereitet):
+retention_days:
+retain_documents:

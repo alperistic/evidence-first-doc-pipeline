@@ -1,0 +1,20 @@
+=== DOKUMENT START ===
+Dokument-ID: KANZ-A-001
+Az: 21 O 10/26
+Klageschrift mit Anträgen.
+
+Weitere Ausführungen zur Klage.
+
+=== DOKUMENT START ===
+Dokument-ID: KANZ-A-002
+Az: 21 O 11/26
+Mahnung wegen ausstehender Zahlung.
+
+Frist und Forderungsaufstellung.
+
+=== DOKUMENT START ===
+Dokument-ID: KANZ-A-003
+Az: 21 O 12/26
+Vertragsnachtrag mit Klauseländerungen.
+
+Abschluss und Unterzeichnung.
