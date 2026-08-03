@@ -92,22 +92,21 @@ _TERMINATION_LABEL_TRIGGERS = (
 )
 _EVIDENCE_BLACKLIST_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?i)fiktives?\s+testdokument"),
-    re.compile(r"(?i)kanzlei.testpaket"),
+    re.compile(r"(?i)\btestpaket\b"),
     re.compile(r"(?i)nur\s+zur\s+systemprüfung"),
     re.compile(r"(?i)keine\s+rechtsberatung"),
     re.compile(r"(?i)^seite\s+\d+\s*$"),
     re.compile(r"(?i)^(doc-id|az|aktenzeichen)\s*:"),
     re.compile(r"(?i)^(hinweis|note)\s*:"),
     re.compile(r"^\s*version\s+\d+\.\d+\s*$", re.IGNORECASE),
-    # Extended blacklist (PR9 fix B)
+    # Header lines that start with a case/document reference.
     re.compile(r"(?im)^AZ\s*:", re.IGNORECASE),
     re.compile(r"(?im)^Aktenzeichen\s*:", re.IGNORECASE),
     re.compile(r"(?im)^DOC-ID\s*:", re.IGNORECASE),
     re.compile(r"^\s*Version\s+\d+\.\d+", re.IGNORECASE),
-    # PR10 fix B': inline AZ patterns (not just line start) – string 1 root cause:
-    # "AZ:" appears after leading text ("Aktenzeichen: AZ: LATE-..."), not at the start of the line,
-    # so the ^AZ patterns don't match. New patterns match anywhere in the string.
-    re.compile(r"(?i)\bAZ\s*:\s*[A-Z]{2,}[A-Z0-9]*[-/]"),  # "AZ: LATE-..." inline
+    # The same references also occur mid-line ("Aktenzeichen: AZ: ABC-2026/17"),
+    # where the ^-anchored patterns above miss them. These match anywhere.
+    re.compile(r"(?i)\bAZ\s*:\s*[A-Z]{2,}[A-Z0-9]*[-/]"),  # inline "AZ: ABC-..."
     re.compile(r"(?i)\bDokumenten-?ID\s*:"),                 # "Dokumenten-ID:" inline
 )
 

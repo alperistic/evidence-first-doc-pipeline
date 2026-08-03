@@ -93,7 +93,7 @@ def main() -> int:
         print(f"{RED}Keine PDFs in {PDFS_DIR} gefunden.{RESET}")
         return 1
 
-    print(f"\n{BOLD}LATE – End-to-End Smoke-Test: PDF → Redaktion → Restore → Export-Check{RESET}")
+    print(f"\n{BOLD}Document pipeline – End-to-End Smoke-Test: PDF → Redaktion → Restore → Export-Check{RESET}")
     print(f"PDFs-Verzeichnis: {PDFS_DIR}")
     print(f"Anzahl PDFs: {len(pdf_files)}\n")
     print("─" * 72)

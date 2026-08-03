@@ -33,7 +33,7 @@ class EvidenceSourceFilterTests(unittest.TestCase):
         self.assertFalse(is_valid_evidence_source("AZ: 11 C 100/26 Mietvertrag Kanzlei"))
 
     def test_rejects_aktenzeichen_header(self):
-        self.assertFalse(is_valid_evidence_source("Aktenzeichen: LATE-2026-001 Dokumentenmappe"))
+        self.assertFalse(is_valid_evidence_source("Aktenzeichen: AKTE-2026-001 Dokumentenmappe"))
 
     def test_rejects_hinweis_header(self):
         self.assertFalse(is_valid_evidence_source("Hinweis: Dies ist ein automatisch generierter Vermerk."))
@@ -61,7 +61,7 @@ class PR9ExtendedBlacklistTests(unittest.TestCase):
     """Fix B: Erweiterte Blacklist + EUR-Betrag-Bevorzugung."""
 
     def test_rejects_az_line_at_start(self):
-        self.assertFalse(is_valid_evidence_source("AZ: LATE-MIX-2026-0422 Dokumentenmappe"))
+        self.assertFalse(is_valid_evidence_source("AZ: AKTE-MIX-2026-0422 Dokumentenmappe"))
 
     def test_rejects_doc_id_line_at_start(self):
         self.assertFalse(is_valid_evidence_source("DOC-ID: MIX-PAKET-2026-04-22 / Version 1.0"))
@@ -75,7 +75,7 @@ class PR9ExtendedBlacklistTests(unittest.TestCase):
     def test_eur_clause_preferred_over_meta_line(self):
         """EUR-Betrag in Klausel wird gegenüber Meta-Zeile bevorzugt."""
         text = (
-            "AZ: LATE-MIX-2026-0422 Dokumentenmappe\n"
+            "AZ: AKTE-MIX-2026-0422 Dokumentenmappe\n"
             "Der vereinbarte Betrag von EUR 10.000,00 ist bis 30.06.2026 fällig."
         )
         result = _select_best_sentence_snippet(text, "EUR 10.000,00", field_hint="fristen_termine")
@@ -86,7 +86,7 @@ class PR9ExtendedBlacklistTests(unittest.TestCase):
 class PR10RealStringBlacklistTests(unittest.TestCase):
     """Fix B': Echte Dokument-Strings 1-4 als Evidence-Quellen ablehnen.
 
-    Root Cause: String 1 enthält 'AZ: LATE-' INLINE (nach führendem Text), nicht
+    Root Cause: String 1 enthält 'AZ: AKTE-' INLINE (nach führendem Text), nicht
     am Zeilenanfang → die ^AZ-Muster aus PR9 greifen nicht. Neues Inline-Muster
     r'\\bAZ\\s*:\\s*[A-Z]{2,}[-/]' matcht überall im String.
     Strings 2-4 waren durch PR9-Patterns bereits abgedeckt – Tests dokumentieren
@@ -94,20 +94,20 @@ class PR10RealStringBlacklistTests(unittest.TestCase):
     """
 
     def test_rejects_string1_az_inline(self):
-        """String 1: 'AZ: LATE-' erscheint inline nach führendem Text → rejected."""
+        """String 1: 'AZ: AKTE-' erscheint inline nach führendem Text → rejected."""
         s = (
-            "Übergabeprotokoll, Hausordnung und Anlagen Aktenzeichen: AZ: LATE-MIX-2026-0422\n"
+            "Übergabeprotokoll, Hausordnung und Anlagen Aktenzeichen: AZ: AKTE-MIX-2026-0422\n"
             "Dokumenten-ID: DOC-ID: MIX-PAKET-2026-04-22 / Version 1.0 Dokumenttyp: Wohnraum..."
         )
         self.assertFalse(
             is_valid_evidence_source(s),
-            "String 1 (AZ: LATE-MIX inline) muss als ungültige Evidence-Quelle abgelehnt werden",
+            "String 1 (AZ: AKTE-MIX inline) muss als ungültige Evidence-Quelle abgelehnt werden",
         )
 
     def test_rejects_string2_kanzlei_testpaket_fiktives(self):
         """String 2: 'Kanzlei-Testpaket' + 'Fiktives Testdokument' → rejected."""
         s = (
-            "Kanzlei-Testpaket (fiktiv) - Mixed PDF mit mehreren Dokumenttypen AZ: LATE-MIX-2026-0422\n"
+            "Kanzlei-Testpaket (fiktiv) - Mixed PDF mit mehreren Dokumenttypen AZ: AKTE-MIX-2026-0422\n"
             "Fiktives Testdokument - nur zur Systemprüfung (Segmentierung/Extraktio..."
         )
         self.assertFalse(
@@ -119,7 +119,7 @@ class PR10RealStringBlacklistTests(unittest.TestCase):
         """String 4: 'Fiktives Testdokument' + 'keine Rechtsberatung' → rejected."""
         s = (
             "Rahmenvertrag über IT-Dienstleistungen und Auftragsverarbeitung (Testdokument) AZ:\n"
-            "LATE-TEST-2026-0417-ITRV Fiktives Testdokument - keine Rechtsberatung - nur..."
+            "AKTE-TEST-2026-0417-ITRV Fiktives Testdokument - keine Rechtsberatung - nur..."
         )
         self.assertFalse(
             is_valid_evidence_source(s),
@@ -142,7 +142,7 @@ class PR10RealStringBlacklistTests(unittest.TestCase):
         übersprungen; der nächstbeste nicht-abgelehnte Satz wird gewählt.
         """
         text = (
-            "Übergabeprotokoll, Hausordnung und Anlagen Aktenzeichen: AZ: LATE-MIX-2026-0422\n"
+            "Übergabeprotokoll, Hausordnung und Anlagen Aktenzeichen: AZ: AKTE-MIX-2026-0422\n"
             "Die monatliche Nettokaltmiete beträgt EUR 1.090,00 zzgl. Betriebskosten."
         )
         result = _select_best_sentence_snippet(text, "EUR 1.090,00", field_hint="betraege")

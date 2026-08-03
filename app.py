@@ -535,7 +535,15 @@ if uploaded_file is not None:
             doc_hash=doc_hash,
             is_short_doc=is_short_doc,
             debug_mode=debug_mode,
-            redact_required=runtime_config.redact_required,
+            # The fail-closed export guard (validate_mandantenexport) only
+            # makes sense when a redaction pass actually ran this request.
+            # runtime_config.redact_required alone is a static policy default
+            # (True unless policy.yaml overrides it) and is independent of
+            # the "Input anonymization (redaction)" sidebar toggle - using it
+            # by itself makes the guard fire even when the user left
+            # redaction OFF and the model received (and returned) the
+            # original, un-redacted text, which is not a leak.
+            redact_required=enable_redaction and runtime_config.redact_required,
         )
 
 

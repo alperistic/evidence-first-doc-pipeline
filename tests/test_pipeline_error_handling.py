@@ -176,7 +176,7 @@ class TestAktenvermerkcCrashDoesNotCrash(unittest.TestCase):
         self.assertEqual(result["analysis_output_type"], "json_ok")
 
     def test_aktenvermerk_crash_logs_warning(self):
-        # W4: print("[LATE][WARNING]") wurde durch structlog _log.warning() ersetzt.
+        # W4: print("[DOCPIPE][WARNING]") wurde durch structlog _log.warning() ersetzt.
         with (
             patch("core.pipeline.analyze_document", return_value=_ok_llm_result()),
             patch(

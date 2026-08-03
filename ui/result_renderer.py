@@ -388,8 +388,10 @@ def render_results(
         )
     except RedactionLeakError as e:
         st.error(
-            f"⚠️ Export blocked: redaction incomplete ({e.leak_count} matches). "
-            f"Document will not be produced. Please contact support."
+            f"⚠️ Export blocked: {e.leak_count} unmasked item(s) found in the export "
+            f"while anonymization was active. The document was not produced - this is "
+            f"the fail-closed check working as intended. Review the redaction summary "
+            f"above, or add the missed terms under \"Additional entities to mask\"."
         )
         st.stop()
 

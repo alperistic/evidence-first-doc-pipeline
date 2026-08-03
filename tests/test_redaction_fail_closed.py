@@ -157,3 +157,125 @@ def test_export_allowed_when_redact_required_false():
         )
         assert result.internal_pdf_bytes == b"pdf"
         assert result.external_pdf_bytes == b"pdf"
+
+
+def test_export_guard_not_armed_when_redaction_toggle_off_end_to_end(monkeypatch):
+    """Regression test for: 'Export blocked: redaction incomplete (3 matches)'
+    firing even though the sidebar toggle "Input anonymization (redaction)"
+    was OFF and no pseudonymization pass ever ran.
+
+    Root cause: app.py passed build_exports(redact_required=...) using only
+    runtime_config.redact_required, a static policy default (True unless
+    policy.yaml overrides it) that is completely independent of the
+    "Input anonymization (redaction)" sidebar toggle (enable_redaction).
+    When enable_redaction is False, the model receives and returns the
+    original text, so real PII in the export is expected, not a leak - the
+    fail-closed guard (validate_mandantenexport) must not run.
+
+    Fix: gate the guard on `enable_redaction and runtime_config.redact_required`
+    (see app.py's render_results(..., redact_required=...) call site).
+
+    This test drives the real pipeline end-to-end (extraction -> segmentation
+    -> demo-stub analysis -> build_exports) against the real synthetic sample,
+    exactly like the reported bug, and asserts the fixed expression does not
+    raise while the naive (buggy) expression does.
+    """
+    monkeypatch.setenv("DOCPIPE_DEMO_MODE", "1")
+    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT", raising=False)
+
+    from pathlib import Path
+
+    from core.config import reset_config
+    from core.extractor import compute_sha256, extract_text_with_meta
+    from core.pipeline import _build_coverage_metrics, _parse_dictionary_entities, _prepare_pages_for_llm
+    from core.utils import _page_no
+    from governance.policy import load_policy
+    from services.export_service import build_exports
+    from workflows.doc_summary import DocSummaryWorkflow
+
+    reset_config()
+
+    sample = Path(__file__).parent.parent / "samples" / "01_mietvertrag_synthetic.pdf"
+    file_bytes = sample.read_bytes()
+
+    loaded_policy = load_policy()
+    workflow = DocSummaryWorkflow()
+
+    # Sidebar defaults an operator sees on first load: redaction toggle OFF.
+    enable_redaction = False
+
+    runtime_config = workflow.build_runtime_config(
+        loaded_policy=loaded_policy,
+        profile_override=None,
+        auto_classify=True,
+        dictionary_entities=_parse_dictionary_entities(""),
+        dictionary_fuzzy=False,
+        dictionary_threshold=92,
+    )
+    # Sanity check on the bug's precondition: the static policy default is
+    # True regardless of the (independent) UI toggle.
+    assert runtime_config.redact_required is True
+
+    doc_hash = compute_sha256(file_bytes)
+    extraction = extract_text_with_meta(file_bytes, sample.name)
+    pages = extraction.pages
+
+    reverse_mapping: list = []
+    context_mapping: dict = {}
+    redacted_pages = _prepare_pages_for_llm(pages, reverse_mapping, apply_redaction=enable_redaction)
+    segments = workflow.build_segments(redacted_pages, runtime_config=runtime_config)
+    source_pages_by_no = {_page_no(p): p for p in pages if _page_no(p)}
+
+    analysis = workflow.run_analysis(
+        segments,
+        doc_hash=doc_hash,
+        runtime_config=runtime_config,
+        reverse_mapping=reverse_mapping,
+        context_mapping=context_mapping,
+        source_pages_by_no=source_pages_by_no,
+        redaction_applied=False,
+        pseudonymization_applied=False,
+        classify_used_chars=0,
+        extract_ms=0,
+        segment_ms=0,
+    )
+    segment_results = analysis["result_bundle"].get("segment_results", [])
+    audit_entry = analysis["audit_entry"]
+
+    overall_chunks = sum(int(seg.get("coverage", {}).get("chunks_sent", 0)) for seg in segment_results)
+    coverage = _build_coverage_metrics(
+        pages=pages,
+        chunks_sent=overall_chunks,
+        citation_status="unverified",
+        citation_metrics={},
+        citation_check_ran=False,
+        citation_verify_mode=runtime_config.citation_verify_mode,
+    )
+
+    # Buggy expression (pre-fix app.py): guard fires even though redaction
+    # was never enabled -> false positive "Export blocked".
+    with pytest.raises(RedactionLeakError):
+        build_exports(
+            segment_results,
+            context_mapping,
+            coverage,
+            audit_entry,
+            "Beides",
+            redact_required=runtime_config.redact_required,
+        )
+
+    # Fixed expression: guard is not armed when the redaction toggle is off.
+    result = build_exports(
+        segment_results,
+        context_mapping,
+        coverage,
+        audit_entry,
+        "Beides",
+        redact_required=enable_redaction and runtime_config.redact_required,
+    )
+    assert result.external_pdf_bytes
+    assert result.internal_pdf_bytes
+
+    reset_config()

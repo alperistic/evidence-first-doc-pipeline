@@ -165,7 +165,7 @@ class BuildEvidenceMapDeadlineTests(unittest.TestCase):
         pages = [
             {
                 "page_number": 1,
-                "text": "Aktenzeichen: AZ: LATE-KUE-2027 Kündigung zum 15.04.2027",
+                "text": "Aktenzeichen: AZ: AKTE-KUE-2027 Kündigung zum 15.04.2027",
             }
         ]
         evidence = build_evidence_map(pages)
@@ -179,7 +179,7 @@ class BuildEvidenceMapDeadlineTests(unittest.TestCase):
             {
                 "page_number": 1,
                 "text": (
-                    "Aktenzeichen: AZ: LATE-MIX-2026-0422 "
+                    "Aktenzeichen: AZ: AKTE-MIX-2026-0422 "
                     "Dokumenten-ID: DOC-ID: MIX-PAKET-2026-04-22"
                 ),
             }
@@ -267,7 +267,7 @@ class SelectBestSentenceSnippetTests(unittest.TestCase):
         _is_meta_block_context(sentence) ihn als Meta-Block erkennt und aussortiert.
         """
         text = (
-            "Kanzlei-Testpaket Dokumentenmappe AZ: LATE-MIX-2026-0422 Version 1\n"
+            "Kanzlei-Testpaket Dokumentenmappe AZ: AKTE-MIX-2026-0422 Version 1\n"
             "Zahlung bis spätestens 17.06.2026 ist fällig."
         )
         result = _select_best_sentence_snippet(text, "17.06.2026", field_hint="fristen_termine")
@@ -302,7 +302,7 @@ class SelectBestSentenceSnippetTests(unittest.TestCase):
         Der Text enthält nur eine Zeile mit 'az:' → alle Kandidaten werden gefiltert →
         candidates leer → fallback-Pfad. Das Ergebnis darf keinen AZ-Header enthalten.
         """
-        text = "Aktenzeichen: AZ: LATE-2026-001 Datum: 15.05.2026"
+        text = "Aktenzeichen: AZ: AKTE-2026-001 Datum: 15.05.2026"
         fallback = "Zahlung bis 15.05.2026"
         result = _select_best_sentence_snippet(
             text, "15.05.2026", field_hint="fristen_termine", fallback=fallback

@@ -208,7 +208,7 @@ def main() -> int:
         print(f"{RED}Keine PDFs in {PDFS_DIR} gefunden.{RESET}")
         return 1
 
-    print(f"\n{BOLD}LATE – Content-Quality Smoke-Test (Datenfluss ohne LLM-Call){RESET}")
+    print(f"\n{BOLD}Document pipeline – Content-Quality Smoke-Test (Datenfluss ohne LLM-Call){RESET}")
     print(f"Prüft: todos-Datenfluss, DOC_CLASS_HINTS, AKTENVERMERK_PROMPT-Aktivierung")
     print(f"PDFs: {len(pdf_files)}\n")
     print("─" * 72)
