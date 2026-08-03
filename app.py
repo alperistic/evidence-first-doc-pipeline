@@ -223,7 +223,12 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
-    file_bytes = uploaded_file.read()
+    # getvalue() rather than read(): Streamlit reruns this script on every
+    # interaction, and read() advances the buffer position, so a rerun that
+    # hit an already-consumed buffer would hash the wrong bytes and change
+    # state_key below - which resets session_state.result and discards the
+    # analysis. getvalue() is position-independent and safe to repeat.
+    file_bytes = uploaded_file.getvalue()
     doc_hash = compute_sha256(file_bytes)
 
     # New document or changed policy/profile setting -> reset state
