@@ -338,3 +338,179 @@ class TestParagraph203Konformitaet:
         log_request(doc_hash=sha256, doc_class="Vertrag", token_count=1, model="m")
         row = _fetch_all(tmp_audit_db)[0]
         assert len(row["doc_hash"]) >= 16
+
+
+# ---------------------------------------------------------------------------
+# services.analysis_service.log_and_aggregate_results: der eigentliche
+# Audit-Writer-Aufrufer. Testet den REALEN Code-Pfad (nicht ein
+# handgebautes output_json), der die vollständige, unredigierte
+# analysis_raw_redacted-Struktur (inkl. Namen/Adressen/Zitate) in
+# output_json einbaut. Regression für den Fund: "document_analysis" trug
+# den kompletten Analyse-Payload (Namen, Adressen, Zitate) in die
+# audit.db – trotz der Zusage "nur SHA-256-Hash im Audit-Log".
+# ---------------------------------------------------------------------------
+
+class TestLogAndAggregateResultsKeinDokumentinhalt:
+    """services.analysis_service.log_and_aggregate_results darf keinen
+    Dokumentinhalt (Namen, Adressen, Beträge, Zitate) in output_json
+    persistieren – nur strukturelle Metadaten/Zählwerte.
+    """
+
+    FORBIDDEN_SUBSTRINGS = (
+        "Max Beispiel",
+        "Erika Mustermann",
+        "Musterstraße",
+        "kontakt@example.org",
+        "850,00",
+    )
+
+    @staticmethod
+    def _segment_result_with_content() -> dict:
+        """Ein Segment-Result, wie es echt von DocSummaryWorkflow.process_segment
+        zurückgegeben wird (core/pipeline.py _process_segment) – mit einem
+        realistischen analysis_raw_redacted-Payload (DocumentAnalysisPayloadModel-
+        Form: metadata, document_type, facts, dates, issues, parties, amounts,
+        key_facts, deadlines, summary_neutral, uncertainties, todos, evidence).
+        """
+        analysis_raw_redacted = {
+            "metadata": {"source_pages": [1, 2]},
+            "document_type": "Mietvertrag",
+            "document_type_source": "segmenter",
+            "facts": [
+                {
+                    "text": "Der Vermieter vermietet dem Mieter die Wohnung im Anwesen Musterstraße 1",
+                    "citations": [
+                        {
+                            "page_number": 1,
+                            "quote_snippet": "Vermieter: Max Beispiel, Musterstraße 1, 12345 Musterstadt (E-Mail: kontakt@example.org)",
+                            "section_hint": None,
+                        }
+                    ],
+                }
+            ],
+            "dates": [{"text": "Mietbeginn 01.03.2026", "citations": []}],
+            "issues": [],
+            "parties": [
+                {
+                    "text": "Vermieter: Max Beispiel",
+                    "citations": [
+                        {
+                            "page_number": 1,
+                            "quote_snippet": "Vermieter: Max Beispiel, Musterstraße 1",
+                            "section_hint": None,
+                        }
+                    ],
+                },
+                {"text": "Mieter: Erika Mustermann", "citations": []},
+            ],
+            "amounts": [{"text": "Kaltmiete: 850,00 EUR", "citations": []}],
+            "key_facts": ["Mietbeginn am 01.03.2026"],
+            "deadlines": ["01.03.2026"],
+            "summary_neutral": "Wohnraum-Mietvertrag zwischen Max Beispiel und Erika Mustermann.",
+            "uncertainties": [],
+            "todos": [],
+            "evidence": [
+                {
+                    "page_number": 1,
+                    "quote_snippet": "Vermieter: Max Beispiel, Musterstraße 1, 12345 Musterstadt (E-Mail: kontakt@example.org)",
+                    "section_hint": None,
+                }
+            ],
+            "chunks_sent": 1,
+            "citation_verify_mode": "enabled",
+        }
+        return {
+            "segment_meta": {"segment_id": 1},
+            "analysis": {"summary_neutral": analysis_raw_redacted["summary_neutral"]},
+            "analysis_redacted": {
+                "kernaussagen": [],
+                "auffaelligkeiten": [],
+                "top3_findings": [],
+                "citation_check_ran": True,
+                "citation_verify_mode": "enabled",
+                "chunks_sent": 1,
+            },
+            "analysis_raw": analysis_raw_redacted,
+            "analysis_raw_redacted": analysis_raw_redacted,
+            "analysis_output_type": "json_ok",
+            "doc_class_fields": {
+                "segment_doc_class": "Mietvertrag",
+                "doc_class_source": "llm",
+                "llm_doc_class_guess": "Mietvertrag",
+            },
+            "token_count": 663,
+            "has_token_usage": True,
+            "prompt_tokens": 663,
+            "completion_tokens": 0,
+            "model": "demo-stub",
+            "timings_ms": {"llm_structure": 4},
+        }
+
+    def test_output_json_enthaelt_keinen_dokumentinhalt(self, tmp_audit_db):
+        from services.analysis_service import log_and_aggregate_results
+
+        segment_results = [self._segment_result_with_content()]
+        log_and_aggregate_results(
+            segment_results,
+            doc_hash="ce8ad534" + "0" * 56,
+            effective_profile="balanced",
+            policy_hash="ph",
+            redaction_applied=False,
+            pseudonymization_applied=False,
+            classify_used_chars=0,
+            auto_classify=True,
+            citation_verify_mode="enabled",
+            extract_ms=0,
+            segment_ms=0,
+        )
+
+        rows = _fetch_all(tmp_audit_db)
+        assert len(rows) == 1
+        output_json_str = rows[0]["output_json"]
+
+        for forbidden in self.FORBIDDEN_SUBSTRINGS:
+            assert forbidden not in output_json_str, (
+                f"Dokumentinhalt {forbidden!r} wurde in output_json persistiert"
+            )
+
+        output_json = json.loads(output_json_str)
+        assert "document_analysis" not in output_json, (
+            "Voller Analyse-Payload darf nicht mehr unter 'document_analysis' liegen"
+        )
+
+    def test_document_analysis_summary_enthaelt_nur_zaehlwerte(self, tmp_audit_db):
+        """Der Ersatz für den vollen Payload ist ein reiner Zählwerte-Block."""
+        from services.analysis_service import log_and_aggregate_results
+
+        segment_results = [self._segment_result_with_content()]
+        log_and_aggregate_results(
+            segment_results,
+            doc_hash="ce8ad534" + "0" * 56,
+            effective_profile="balanced",
+            policy_hash="ph",
+            redaction_applied=False,
+            pseudonymization_applied=False,
+            classify_used_chars=0,
+            auto_classify=True,
+            citation_verify_mode="enabled",
+            extract_ms=0,
+            segment_ms=0,
+        )
+
+        row = _fetch_all(tmp_audit_db)[0]
+        output_json = json.loads(row["output_json"])
+        summary = output_json["document_analysis_summary"]
+
+        # document_type bleibt (Klassifikations-Metadatum, kein Inhalt)
+        assert summary["document_type"] == "Mietvertrag"
+        # Zählwerte statt Klartext
+        assert summary["n_facts"] == 1
+        assert summary["n_parties"] == 2
+        assert summary["n_amounts"] == 1
+        assert summary["n_evidence"] == 1
+        assert summary["has_summary"] is True
+        # Keine der Zählwerte darf ein String mit Dokumentinhalt sein
+        for key, value in summary.items():
+            if key == "document_type":
+                continue
+            assert isinstance(value, (int, bool)), f"{key} sollte ein Zählwert sein, ist {type(value)}"

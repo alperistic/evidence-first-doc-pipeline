@@ -148,7 +148,10 @@ class AppConfig:
     max_concurrent_segments: int          # DOCPIPE_MAX_CONCURRENT_SEGMENTS
 
     # -----------------------------------------------------------------------
-    # Document cache (SHA-256-based; only a hash is cached, never document content)
+    # Document cache. Keyed by SHA-256 of the document, but the cached VALUE is
+    # the full analysis result, including extracted values and verbatim quotes,
+    # written to doc_cache.sqlite on disk. Off by default: enabling it trades
+    # confidentiality for the cost of re-running the model on a repeat upload.
     # -----------------------------------------------------------------------
     doc_cache_enabled: bool               # DOCPIPE_DOC_CACHE_ENABLED (default: False)
     doc_cache_ttl_seconds: int            # DOCPIPE_DOC_CACHE_TTL_SECONDS (default: 3600)

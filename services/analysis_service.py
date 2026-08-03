@@ -205,6 +205,35 @@ def log_and_aggregate_results(
             if bool(item.get("has_token_usage"))
             else None
         )
+        document_analysis_raw = (
+            item.get("analysis_raw_redacted")
+            if isinstance(item.get("analysis_raw_redacted"), dict)
+            else {}
+        )
+        # Confidentiality: the audit log must never persist document content
+        # (names, addresses, amounts, dates, verbatim quotes). Only a
+        # content-free structural summary (counts) is kept here – see
+        # tests/test_audit.py for the regression coverage on this contract.
+        document_analysis_summary = {
+            "document_type": str(
+                document_analysis_raw.get("document_type", "") or ""
+            ).strip()
+            or None,
+            "n_facts": len(document_analysis_raw.get("facts") or []),
+            "n_dates": len(document_analysis_raw.get("dates") or []),
+            "n_issues": len(document_analysis_raw.get("issues") or []),
+            "n_parties": len(document_analysis_raw.get("parties") or []),
+            "n_amounts": len(document_analysis_raw.get("amounts") or []),
+            "n_key_facts": len(document_analysis_raw.get("key_facts") or []),
+            "n_deadlines": len(document_analysis_raw.get("deadlines") or []),
+            "n_uncertainties": len(document_analysis_raw.get("uncertainties") or []),
+            "n_todos": len(document_analysis_raw.get("todos") or []),
+            "n_evidence": len(document_analysis_raw.get("evidence") or []),
+            "has_summary": bool(
+                str(document_analysis_raw.get("summary_neutral", "") or "").strip()
+                and document_analysis_raw.get("summary_neutral") != "missing"
+            ),
+        }
         output_json = {
             "analysis_run_id": ts,
             "timings_ms": {
@@ -220,11 +249,7 @@ def log_and_aggregate_results(
                 if isinstance(analysis, dict)
                 else 0
             ),
-            "document_analysis": (
-                item.get("analysis_raw_redacted")
-                if isinstance(item.get("analysis_raw_redacted"), dict)
-                else {}
-            ),
+            "document_analysis_summary": document_analysis_summary,
             "token_usage": {
                 "has_usage": bool(item.get("has_token_usage")),
                 "total_tokens": seg_total_tokens,
@@ -239,11 +264,6 @@ def log_and_aggregate_results(
             ),
             "segment_doc_class": segment_doc_class,
         }
-        document_analysis_raw = (
-            item.get("analysis_raw_redacted")
-            if isinstance(item.get("analysis_raw_redacted"), dict)
-            else {}
-        )
         document_type_source = str(document_analysis_raw.get("document_type_source", "") or "").strip()
         if document_type_source:
             output_json["document_type_source"] = document_type_source
