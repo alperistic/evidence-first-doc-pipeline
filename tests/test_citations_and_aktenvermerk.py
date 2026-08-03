@@ -25,7 +25,9 @@ from core.evidence import (
     build_evidence_map,
     ensure_party_evidence_consistency,
     strip_repeating_header_footer_lines,
+    _neutralize_legal_tone,
 )
+from core.evidence_map import _RESTATEMENT_FIELDS, _ASSESSMENT_FIELDS
 
 
 class CitationAndAktenvermerkTests(unittest.TestCase):
@@ -1090,6 +1092,155 @@ class ExternalModeQuelleRenderTest(unittest.TestCase):
             self._segment_with_citations(), coverage=None, mode="internal"
         )
         self.assertIn("Quelle S. 3:", result)
+
+
+class NeutralizeLegalToneFieldRoleTests(unittest.TestCase):
+    """FIX: _neutralize_legal_tone must not falsify restated document content.
+
+    Assessment-only rules (ordinary German words like "muss", "wirksam",
+    "anspruch") may only fire in fields where the model is producing its own
+    judgment (auffaelligkeiten, todos, prueffragen, missing_info, ...) - never
+    in fields that restate what the document says (kernaussagen,
+    fristen_termine, dokumenttyp_parteien, eckdaten, facts, dates, parties,
+    amounts, key_facts, ...). Always-on rules (unambiguous multi-word legal-
+    advice markers) still apply everywhere.
+    """
+
+    def test_kernaussagen_keeps_muss_verbatim(self):
+        """Restatement field: 'muss' is an ordinary German word quoting the document."""
+        parsed = {
+            "kernaussagen": [
+                {
+                    "text": "Die Kündigungserklärung muss dem Vermieter schriftlich zugehen.",
+                    "citations": [
+                        {
+                            "page_number": 2,
+                            "quote_snippet": "Die Kündigungserklärung muss dem Vermieter zugehen",
+                        }
+                    ],
+                }
+            ]
+        }
+        out = _neutralize_legal_tone(parsed)
+        text = out["kernaussagen"][0]["text"]
+        self.assertIn("muss", text)
+        self.assertNotIn("zu prüfen", text)
+
+    def test_auffaelligkeiten_still_neutralizes_unzulaessig(self):
+        """Assessment field: broad ordinary-German rules still apply."""
+        parsed = {
+            "auffaelligkeiten": [
+                {"text": "Die Klausel ist unzulässig.", "citations": []},
+            ]
+        }
+        out = _neutralize_legal_tone(parsed)
+        text = out["auffaelligkeiten"][0]["text"]
+        self.assertNotIn("unzulässig", text)
+        self.assertIn("zu prüfen", text)
+
+    def test_quote_snippet_with_muss_untouched(self):
+        """Regression guard: quote_snippet/quote stay exempt everywhere, in any field."""
+        parsed = {
+            "auffaelligkeiten": [
+                {
+                    "text": "Hinweis dazu.",
+                    "citations": [
+                        {
+                            "page_number": 1,
+                            "quote_snippet": "Der Mieter muss die Kaution zahlen",
+                        }
+                    ],
+                }
+            ]
+        }
+        out = _neutralize_legal_tone(parsed)
+        quote = out["auffaelligkeiten"][0]["citations"][0]["quote_snippet"]
+        self.assertIn("muss", quote)
+
+    def test_always_on_rule_fires_inside_restatement_field(self):
+        """Unambiguous multi-word legal-advice markers still fire even in restatement fields."""
+        parsed = {
+            "kernaussagen": [
+                {"text": "Die Erfolgsaussichten der Klage sind gut.", "citations": []},
+            ]
+        }
+        out = _neutralize_legal_tone(parsed)
+        text = out["kernaussagen"][0]["text"]
+        self.assertNotIn("Erfolgsaussichten", text)
+        self.assertIn("offen / unklar / Rückfrage", text)
+
+    def test_kuendigungserklaerung_regression_matches_own_citation(self):
+        """Real-world regression: kernaussagen text must match its own citation's quote."""
+        parsed = {
+            "kernaussagen": [
+                {
+                    "text": "Die Kündigungserklärung muss dem Vermieter schriftlich zugehen.",
+                    "citations": [
+                        {
+                            "page_number": 2,
+                            "quote_snippet": "Die Kündigungserklärung muss dem Vermieter zugehen",
+                        }
+                    ],
+                }
+            ]
+        }
+        out = _neutralize_legal_tone(parsed)
+        claim_text = out["kernaussagen"][0]["text"]
+        citation_quote = out["kernaussagen"][0]["citations"][0]["quote_snippet"]
+        self.assertIn("muss", claim_text)
+        self.assertIn("muss", citation_quote)
+
+    def test_unknown_field_defaults_to_conservative_restatement(self):
+        """Unlisted/unrecognized top-level fields default to always-on-only (conservative)."""
+        parsed = {
+            "some_new_field_not_in_any_list": [
+                {"text": "Der Mieter muss zahlen, das ist unzulässig eingeschränkt.", "citations": []},
+            ]
+        }
+        out = _neutralize_legal_tone(parsed)
+        text = out["some_new_field_not_in_any_list"][0]["text"]
+        # "muss" and "unzulässig" are assessment-only rules -> untouched here.
+        self.assertIn("muss", text)
+        self.assertIn("unzulässig", text)
+
+    def test_restatement_and_assessment_field_sets_do_not_overlap(self):
+        """Guardrail: no field is classified as both restatement and assessment."""
+        self.assertEqual(_RESTATEMENT_FIELDS & _ASSESSMENT_FIELDS, set())
+
+
+class CleanSnippetBracketMetaTests(unittest.TestCase):
+    """clean_snippet strips bracketed banner/marker noise but never redaction tokens."""
+
+    def test_strips_leading_banner_run(self):
+        cleaned = clean_snippet("[watermark -- sample copy] Der Mieter leistet eine Kaution.")
+        self.assertEqual(cleaned, "Der Mieter leistet eine Kaution")
+
+    def test_strips_multiple_leading_bracket_groups(self):
+        cleaned = clean_snippet("[watermark] [Seite 2] Der Mieter zahlt monatlich.")
+        self.assertEqual(cleaned, "Der Mieter zahlt monatlich")
+
+    def test_keeps_leading_redaction_placeholder(self):
+        """A placeholder can legitimately start a sentence - dropping it would
+        delete the acting party from a displayed piece of evidence."""
+        cleaned = clean_snippet("[PERSON_1] hat den Vertrag unterzeichnet.")
+        self.assertTrue(cleaned.startswith("[PERSON_1]"), cleaned)
+
+    def test_keeps_trailing_redaction_placeholder(self):
+        cleaned = clean_snippet("Vermieterin ist die [ORG_1]")
+        self.assertTrue(cleaned.endswith("[ORG_1]"), cleaned)
+
+    def test_placeholder_only_snippet_survives(self):
+        self.assertEqual(clean_snippet("[PERSON_1]"), "[PERSON_1]")
+
+    def test_strips_banner_but_keeps_following_placeholder(self):
+        """Mixed case: banner noise ahead of a placeholder that starts the sentence."""
+        cleaned = clean_snippet("[watermark -- sample copy] [PERSON_1] hat unterzeichnet.")
+        self.assertEqual(cleaned, "[PERSON_1] hat unterzeichnet")
+
+    def test_placeholders_inside_sentence_untouched(self):
+        cleaned = clean_snippet("Zwischen [PERSON_1] und [PERSON_2] wird Folgendes vereinbart.")
+        self.assertIn("[PERSON_1]", cleaned)
+        self.assertIn("[PERSON_2]", cleaned)
 
 
 if __name__ == "__main__":

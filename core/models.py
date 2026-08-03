@@ -172,17 +172,67 @@ _DATE_ORDINAL_START_RE = re.compile(
     flags=re.IGNORECASE,
 )
 
+# Leading/trailing bracket-only "meta" runs (e.g. a scan/watermark banner
+# stamped as its own bracketed line, or a "[Seite 2]" page marker) that end up
+# glued to a quote when the source PDF has no blank line separating them from
+# the real prose. Structural rule, not tied to any wording: genuine document
+# prose does not open or close with nothing but bracketed content.
+#
+# IMPORTANT exception - redaction placeholders. When input anonymization is on,
+# real content is replaced by "[PERSON_1]" / "[ORG_2]" / ... tokens, and those
+# routinely DO start or end a sentence ("[PERSON_1] hat den Vertrag
+# unterzeichnet"). Stripping them would silently delete the acting party from
+# a displayed piece of evidence - a far worse defect than the banner noise
+# this rule exists to remove. So placeholder tokens are never stripped; only
+# non-placeholder bracket runs are.
+#
+# The token pattern is duplicated from governance/redaction_patterns.py rather
+# than imported: core/models.py is loaded unconditionally and must not depend
+# on the governance layer. Keep the two in sync when adding a new mask type.
+_REDACTION_PLACEHOLDER_RE = re.compile(
+    r"\[(?:DICT|PERSON|ADDR|EMAIL|IBAN|PARTEI|AKTENZEICHEN|PHONE|TAXID|FIRMA|DATUM|BIC|ORG|HRB)_[0-9]+\]"
+)
+_LEADING_BRACKET_META_RE = re.compile(r"^\s*\[[^\[\]]*\]\s*")
+_TRAILING_BRACKET_META_RE = re.compile(r"\s*\[[^\[\]]*\]\s*$")
+
+
+def _strip_leading_trailing_bracket_meta(text: str) -> str:
+    """Strips leading/trailing bracket-only runs from `text`.
+
+    Only trims whole "[...]" groups plus surrounding whitespace from the two
+    ends, never the middle, so the result stays a strict substring of the
+    input. Redaction placeholders ("[PERSON_1]", ...) are left in place - see
+    the note above _REDACTION_PLACEHOLDER_RE.
+    """
+    stripped = text
+    changed = True
+    while changed:
+        changed = False
+        for pattern in (_LEADING_BRACKET_META_RE, _TRAILING_BRACKET_META_RE):
+            match = pattern.search(stripped)
+            if not match:
+                continue
+            if _REDACTION_PLACEHOLDER_RE.fullmatch(match.group(0).strip()):
+                continue
+            stripped = stripped[: match.start()] + stripped[match.end() :]
+            changed = True
+    return stripped
+
 
 def clean_snippet(text: str, max_chars: int = _SNIPPET_MAX_CHARS) -> str:
     """
     Cleans up snippets for UI/exports:
     - removes parser artifacts (e.g. leading page numbers),
+    - strips leading/trailing bracket-only metadata runs (e.g. a banner
+      stamped as its own "[...]" line ahead of the real sentence),
     - normalizes whitespace and hyphenation,
     - tries to start at a sentence boundary,
     - clips without leaving a truncated word fragment.
     """
     snippet = (text or "").replace("\u00ad", "")
     snippet = re.sub(r"(\w)-\s+(\w)", r"\1\2", snippet)
+    snippet = _normalize_ws(snippet)
+    snippet = _strip_leading_trailing_bracket_meta(snippet)
     snippet = _normalize_ws(snippet)
     # No stripping when the snippet starts with a long-format date: "14. Februar 2025"
     if not _DATE_ORDINAL_START_RE.match(snippet):

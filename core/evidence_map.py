@@ -266,13 +266,36 @@ _ZAHLLAST_LEFT_RE = re.compile(r"betr[äa]g[t]\s*$", re.IGNORECASE)
 # Pattern 1 (right part): "fällig jeweils" qualifies as a recurring total payment
 _ZAHLLAST_RIGHT_RE = re.compile(r"\bf[äa]llig\s+jeweils\b", re.IGNORECASE)
 
-_FORBIDDEN_REPLACEMENTS: list[tuple[str, str]] = [
+# Split into two tiers by how unambiguous the legal-advice signal is.
+#
+# _ALWAYS_ON_REPLACEMENTS: multi-word / unambiguous legal-advice markers. These
+# do not collide with ordinary restatement of document content ("die Klausel
+# ist rechtlich problematisch" is always an assessment, never a quote of what
+# the document itself says), so they are safe to apply everywhere, including
+# restatement fields.
+#
+# _ASSESSMENT_ONLY_REPLACEMENTS: single ordinary German words/short phrases
+# ("muss", "wirksam", "anspruch", ...) that show up constantly in ordinary
+# restatement of document content (e.g. a citation-adjacent claim that quotes
+# "... MUSS dem Vermieter ... zugehen"). Applying these outside assessment
+# fields silently falsifies what the document says, so they are restricted to
+# fields where the model is producing its own evaluative judgment.
+#
+# Ordering matters within each tier: multi-word specific patterns must run
+# before any single-word pattern that could match a substring of them (e.g.
+# "rechtlich unzulässig" before a bare "unzulässig").
+_ALWAYS_ON_REPLACEMENTS: list[tuple[str, str]] = [
     (r"\brechtlich problematisch\b", "Hinweis (zu prüfen)"),
     (r"\brechtlich korrekt\b", "zu prüfen"),
     (r"\brechtlich zulässig\b", "zu prüfen"),
     (r"\brechtlich unzulässig\b", "zu prüfen"),
     (r"\bgesetzlich\s+erlaubt\b", "zu prüfen"),
     (r"\bgesetzlich\s+verboten\b", "zu prüfen"),
+    (r"\berfolgsaussicht(?:en)?\b", "offen / unklar / Rückfrage"),
+    (r"\bbelegen\s+k[oö]nnen\b", "im Dokument genannt / Beweismittel genannt"),
+    (r"\brechtsfolge(?:n)?\b", "Hinweis"),
+]
+_ASSESSMENT_ONLY_REPLACEMENTS: list[tuple[str, str]] = [
     (r"\bzulässig\b", "zu prüfen"),
     (r"\bunzulässig\b", "zu prüfen"),
     (r"\bwirksam\b", "zu prüfen"),
@@ -285,15 +308,66 @@ _FORBIDDEN_REPLACEMENTS: list[tuple[str, str]] = [
     (r"\bdarf\s+nicht\b", "zu prüfen"),
     (r"\bnur\s+wenn\b", "unter Bedingung (zu prüfen)"),
     (r"\bist\s+verpflichtet\b", "wird im Dokument erwähnt (zu prüfen)"),
-    (r"\berfolgsaussicht(?:en)?\b", "offen / unklar / Rückfrage"),
     (r"\baussichten?\b", "offen / unklar / Rückfrage"),
     (r"\bschl[üu]ssig\b", "zu prüfen / Abgleich erforderlich"),
     (r"\bausreichend\b", "zu prüfen / Abgleich erforderlich"),
     (r"\berschweren\b", "offen / unklar / Rückfrage"),
-    (r"\bbelegen\s+k[oö]nnen\b", "im Dokument genannt / Beweismittel genannt"),
     (r"\bdurchsetzbar\b", "offen / unklar / Rückfrage"),
-    (r"\brechtsfolge(?:n)?\b", "Hinweis"),
 ]
+# Backward-compat alias: some callers/tests may still reference the combined
+# list (e.g. to check "is this pattern known at all"). Assessment-only rules
+# are listed after always-on rules, preserving the original ordering.
+_FORBIDDEN_REPLACEMENTS: list[tuple[str, str]] = (
+    _ALWAYS_ON_REPLACEMENTS + _ASSESSMENT_ONLY_REPLACEMENTS
+)
+
+# Top-level schema fields where the model restates document content (facts,
+# dates, parties, amounts, key statements) rather than producing its own
+# evaluative judgment. These fields carry the SummaryPayloadModel/
+# AktenvermerkPayloadModel/SegmentSummaryPayloadModel/ChunkPayloadModel/
+# DocumentAnalysisPayloadModel restatement fields per core/prompts.py.
+_RESTATEMENT_FIELDS: frozenset[str] = frozenset(
+    {
+        "kernaussagen",
+        "fristen_termine",
+        "dokumenttyp_parteien",
+        "eckdaten",
+        "kurzueberblick",
+        # ChunkPayloadModel
+        "key_points",
+        "dates",
+        # DocumentAnalysisPayloadModel
+        "facts",
+        "parties",
+        "amounts",
+        "key_facts",
+        "deadlines",
+        "summary_neutral",
+        "metadata",
+        "document_type",
+    }
+)
+
+# Top-level schema fields where the model produces its own assessment/
+# flagging (auffaelligkeiten, contradictions, missing-info questions, to-dos).
+# These are the fields apply_no_legal_advice_guard() already targets via its
+# own smaller _LEGAL_GUARD_REPLACEMENTS list; _neutralize_legal_tone follows
+# the same seam for the broader ordinary-German rule set.
+_ASSESSMENT_FIELDS: frozenset[str] = frozenset(
+    {
+        "auffaelligkeiten",
+        "widersprueche",
+        "fehlende_angaben",
+        "todos",
+        "prueffragen",
+        "missing_info",
+        "top3_findings",
+        "top3_questions",
+        "issues",
+        "questions",
+        "uncertainties",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Helper functions
@@ -404,18 +478,56 @@ def _is_year_like_amount(value: str) -> bool:
     return bool(_YEAR_AMOUNT_RE.match(stripped))
 
 
-def _neutralize_legal_tone(value: Any, *, key: str | None = None) -> Any:
+def _neutralize_legal_tone(
+    value: Any,
+    *,
+    key: str | None = None,
+    root_field: str | None = None,
+) -> Any:
+    """Neutralizes legal-advice-style phrasing, but only where it is safe to do so.
+
+    `root_field` carries the TOP-LEVEL schema field name (e.g. "kernaussagen",
+    "auffaelligkeiten") down through the recursive walk over nested lists/dicts,
+    so the rule selection can depend on whether the top-level field restates
+    document content or holds the model's own assessment. `key` remains the
+    immediate parent key, used only for the pre-existing quote exemption.
+
+    Rule selection:
+    - quote_snippet/quote values: never touched (exempt everywhere), as before.
+    - assessment fields (see _ASSESSMENT_FIELDS): both always-on and
+      assessment-only replacements apply.
+    - unrecognized/unlisted top-level fields: conservative default, treated as
+      restatement (always-on rules only). Falsifying reported document content
+      is a worse failure mode than leaving a slightly un-neutralized tone in an
+      edge-case field, and the prompt design plus apply_no_legal_advice_guard()
+      already cover the assessment path for known fields.
+    - restatement fields (see _RESTATEMENT_FIELDS) and everything else not in
+      _ASSESSMENT_FIELDS: always-on replacements only.
+    """
     if isinstance(value, str):
         if key in {"quote_snippet", "quote"}:
             return clean_snippet(value, max_chars=180)
         normalized = value
-        for pattern, repl in _FORBIDDEN_REPLACEMENTS:
+        if root_field in _ASSESSMENT_FIELDS:
+            rules = _ALWAYS_ON_REPLACEMENTS + _ASSESSMENT_ONLY_REPLACEMENTS
+        else:
+            # Restatement fields AND unknown/unlisted fields default to the
+            # conservative, always-on-only side.
+            rules = _ALWAYS_ON_REPLACEMENTS
+        for pattern, repl in rules:
             normalized = re.sub(pattern, repl, normalized, flags=re.IGNORECASE)
         return _normalize_ws(normalized)
     if isinstance(value, list):
-        return [_neutralize_legal_tone(v) for v in value]
+        return [_neutralize_legal_tone(v, root_field=root_field) for v in value]
     if isinstance(value, dict):
-        return {k: _neutralize_legal_tone(v, key=k) for k, v in value.items()}
+        return {
+            k: _neutralize_legal_tone(
+                v,
+                key=k,
+                root_field=k if root_field is None else root_field,
+            )
+            for k, v in value.items()
+        }
     return value
 
 
