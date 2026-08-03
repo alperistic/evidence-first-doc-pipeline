@@ -1,5 +1,5 @@
 """
-export_content.py – Selektionslogik für Exportinhalte.
+export_content.py - Selection logic for export content.
 """
 
 from __future__ import annotations
@@ -12,7 +12,13 @@ def build_export_content(
     export_selection: str,
     mode: Literal["internal", "external"] = "internal",
 ) -> dict[str, Any]:
-    """Wählt Export-Teile basierend auf der UI-Auswahl aus."""
+    """Selects export parts based on the UI selection.
+
+    Note: the export_selection values ("Zusammenfassung", "Aktennotiz", "Beides")
+    are a string-based data contract consumed by callers and asserted directly in
+    tests - they are intentionally left untranslated (see UI layer for the
+    English display labels).
+    """
     if mode not in {"internal", "external"}:
         raise ValueError("mode must be one of: internal, external")
 
@@ -20,7 +26,7 @@ def build_export_content(
     aktennotiz = str(result_payload.get("aktennotiz", "") or "")
     evidence = result_payload.get("evidence")
 
-    # Harte Regel: Mandantenfassung enthält nie interne Aktennotiz.
+    # Hard rule: the external (client-facing) version never includes the internal note.
     if mode == "external":
         return {"summary": summary, "evidence": evidence}
 

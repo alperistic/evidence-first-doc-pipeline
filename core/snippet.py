@@ -1,7 +1,7 @@
-"""core/snippet.py – Snippet-Selektion und Text-Matching-Hilfsfunktionen.
+"""core/snippet.py – Snippet selection and text-matching helper functions.
 
-Ausgelagert aus core/evidence.py (PR5).
-Kein Streamlit-Import. Keine Pipeline-Logik.
+Moved out of core/evidence.py (PR5).
+No Streamlit import. No pipeline logic.
 """
 
 import re
@@ -11,7 +11,7 @@ from typing import Any
 from core.models import _normalize_ws, _LEADING_ARTIFACT_RE, clean_snippet
 
 # ---------------------------------------------------------------------------
-# Trigger-Phrase-Konstanten
+# Trigger-phrase constants
 # ---------------------------------------------------------------------------
 
 _DEADLINE_TRIGGER_PHRASES = (
@@ -99,14 +99,14 @@ _EVIDENCE_BLACKLIST_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?i)^(doc-id|az|aktenzeichen)\s*:"),
     re.compile(r"(?i)^(hinweis|note)\s*:"),
     re.compile(r"^\s*version\s+\d+\.\d+\s*$", re.IGNORECASE),
-    # Extended blacklist (PR9 Fix B)
+    # Extended blacklist (PR9 fix B)
     re.compile(r"(?im)^AZ\s*:", re.IGNORECASE),
     re.compile(r"(?im)^Aktenzeichen\s*:", re.IGNORECASE),
     re.compile(r"(?im)^DOC-ID\s*:", re.IGNORECASE),
     re.compile(r"^\s*Version\s+\d+\.\d+", re.IGNORECASE),
-    # PR10 Fix B': inline AZ-Patterns (nicht nur Zeilenanfang) – String 1 Root Cause:
-    # "AZ:" erscheint nach führendem Text ("Aktenzeichen: AZ: LATE-..."), nicht am Zeilenanfang,
-    # daher greifen die ^AZ-Muster nicht. Neue Patterns matchen überall im String.
+    # PR10 fix B': inline AZ patterns (not just line start) – string 1 root cause:
+    # "AZ:" appears after leading text ("Aktenzeichen: AZ: LATE-..."), not at the start of the line,
+    # so the ^AZ patterns don't match. New patterns match anywhere in the string.
     re.compile(r"(?i)\bAZ\s*:\s*[A-Z]{2,}[A-Z0-9]*[-/]"),  # "AZ: LATE-..." inline
     re.compile(r"(?i)\bDokumenten-?ID\s*:"),                 # "Dokumenten-ID:" inline
 )
@@ -120,8 +120,8 @@ _CONCRETE_NUMBER_RE = re.compile(r"\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?\b")
 
 _SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?;])\s+|\n+")
 
-# FIX 2 (P1): Fristen-Felder nur mit Datumsangaben oder Frist-Keywords befüllen.
-# Patterns für DD.MM.YYYY und "DD. Monatname YYYY" Datumsformate.
+# FIX 2 (P1): only populate deadline fields with dates or deadline keywords.
+# Patterns for DD.MM.YYYY and "DD. Monatname YYYY" date formats.
 _DATE_IN_SENTENCE_RE = re.compile(r"\b\d{1,2}\.\d{1,2}\.\d{2,4}\b")
 _GERMAN_MONTH_DATE_RE = re.compile(
     r"\b\d{1,2}\.\s+"
@@ -135,7 +135,7 @@ _FRISTEN_SENTENCE_KEYWORDS_RE = re.compile(
     r"innerhalb\s+von|ablauf|kündigung|kuendigung|laufzeit)\b",
     re.IGNORECASE,
 )
-# Felder, bei denen der Quote-Anchor nur Sätze mit Datum oder Frist-Keyword akzeptiert
+# Fields for which the quote anchor only accepts sentences with a date or deadline keyword
 _FRISTEN_FIELD_HINTS = frozenset({"fristen_termine", "kuendigung_fristen", "datum_beginn"})
 
 _META_BLOCK_INDICATORS = (
@@ -149,7 +149,7 @@ _META_BLOCK_INDICATORS = (
 )
 
 # ---------------------------------------------------------------------------
-# Text-Normalisierung (hier platziert um zirkuläre Importe zu vermeiden)
+# Text normalization (placed here to avoid circular imports)
 # ---------------------------------------------------------------------------
 
 def _normalize_for_match(text: str) -> str:
@@ -161,7 +161,7 @@ def _normalize_for_match(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Meta-Block / Trigger-Phrase-Helfer
+# Meta-block / trigger-phrase helpers
 # ---------------------------------------------------------------------------
 
 def _is_meta_block_context(text: str) -> bool:
@@ -177,7 +177,7 @@ def _contains_trigger_phrase(text: str, phrases: tuple[str, ...]) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Satz-Segmentierung und Scoring
+# Sentence segmentation and scoring
 # ---------------------------------------------------------------------------
 
 def _sentence_spans(text: str) -> list[tuple[int, int, str]]:
@@ -223,7 +223,7 @@ def _score_sentence_for_field(sentence: str, field_hint: str | None = None) -> i
 
 
 def _sentence_has_date_or_frist(sentence: str) -> bool:
-    """True wenn der Satz ein erkennbares Datum oder Frist-Keyword enthält."""
+    """True if the sentence contains a recognizable date or deadline keyword."""
     return bool(
         _DATE_IN_SENTENCE_RE.search(sentence)
         or _GERMAN_MONTH_DATE_RE.search(sentence)
@@ -258,9 +258,9 @@ def _select_best_sentence_snippet(
         candidates.append((score, len(sentence), sentence))
 
     if not candidates:
-        # FIX 2 (P1): Für Fristen-Felder nur Fallback benutzen wenn er selbst
-        # ein Datum oder Frist-Keyword enthält. Andernfalls "" zurückgeben,
-        # damit kein Adressblock / Header als Frist-Quote erscheint.
+        # FIX 2 (P1): for deadline fields, only use the fallback if it itself
+        # contains a date or deadline keyword. Otherwise return "", so that
+        # no address block / header appears as a deadline quote.
         if is_fristen_field:
             fallback_clean = str(fallback or "")
             if fallback_clean and _sentence_has_date_or_frist(fallback_clean):
@@ -268,15 +268,15 @@ def _select_best_sentence_snippet(
             return ""
         return clean_snippet(fallback or needle_norm, max_chars=180)
 
-    # FIX 2 (P1): Für Fristen-Felder nur Sätze akzeptieren die ein erkennbares
-    # Datum oder Frist-Keyword enthalten. Adressblöcke, Vollmacht-Header und
-    # andere inhaltlich unpassende Sätze werden herausgefiltert.
+    # FIX 2 (P1): for deadline fields, only accept sentences that contain a
+    # recognizable date or deadline keyword. Address blocks, power-of-attorney
+    # headers, and other content-mismatched sentences are filtered out.
     if is_fristen_field:
         filtered = [c for c in candidates if _sentence_has_date_or_frist(c[2])]
         if filtered:
             candidates = filtered
         else:
-            return ""  # Kein gültiger Fristen-Satz gefunden
+            return ""  # No valid deadline sentence found
 
     # Prefer higher score; break ties by shorter length (content-dense sentences
     # over long headers that merely contain the needle).
@@ -285,7 +285,7 @@ def _select_best_sentence_snippet(
 
 
 # ---------------------------------------------------------------------------
-# Deadline / Label-Helfer
+# Deadline / label helpers
 # ---------------------------------------------------------------------------
 
 def _deadline_label_from_context(text: str) -> str:
@@ -306,7 +306,7 @@ _GERMAN_MONTH_NAMES: dict[str, int] = {
 
 
 def _normalize_date_to_iso(value: str) -> str | None:
-    # Numerisches Format: DD.MM.YYYY oder DD.MM.YY
+    # Numeric format: DD.MM.YYYY or DD.MM.YY
     match = re.search(r"\b(\d{1,2})\.(\d{1,2})\.(\d{2,4})\b", str(value or ""))
     if match:
         day = int(match.group(1))
@@ -319,7 +319,7 @@ def _normalize_date_to_iso(value: str) -> str | None:
             return date(year, month, day).isoformat()
         except ValueError:
             return None
-    # Long-Format: "31. Januar 2025"
+    # Long format: "31. Januar 2025"
     long_match = re.search(
         r"\b(\d{1,2})\.\s+"
         r"(januar|februar|m[äa]rz|april|mai|juni|juli|august|september|oktober|november|dezember)"
@@ -341,7 +341,7 @@ def _normalize_date_to_iso(value: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Quote / Snippet-Helfer
+# Quote / snippet helpers
 # ---------------------------------------------------------------------------
 
 def _clip_quote_200(text: str) -> str:
@@ -397,11 +397,11 @@ def _snippet_quality_score(item: dict[str, Any]) -> tuple[int, int, int, int, in
     # Root cause PR10: flat_text window-quotes could include header text; when the
     # per-line loop produced a short but valid quote, the header quote won via len(quote).
     is_valid = 1 if is_valid_evidence_source(quote) else 0
-    # Zahllast-Items (Gesamtzahllast/Monatsmiete) sind semantisch hochwertig auch wenn ihr
-    # Quote durch wiederholte clean_snippet-Aufrufe verkürzt wird (Abbreviationen wie "zzgl.",
-    # "i.H.v." triggern den Satzanfang-Sprung). Das is_zahllast-Flag überbrückt diesen
-    # Scoring-Nachteil und stellt sicher dass der Zahllast-Betrag über generische Beträge
-    # mit längerem aber inhaltlich unwichtigerem Quote rangiert.
+    # Zahllast items (total rent due / monthly rent) are semantically high-value even when
+    # their quote gets shortened by repeated clean_snippet calls (abbreviations like "zzgl.",
+    # "i.H.v." trigger the sentence-start jump). The is_zahllast flag bridges this scoring
+    # disadvantage and ensures the Zahllast amount ranks above generic amounts with a
+    # longer but less content-relevant quote.
     sentence_like = 1 if (
         _is_sentence_like_snippet(quote) or bool(item.get("is_zahllast"))
     ) else 0
@@ -421,10 +421,10 @@ def _snippet_quality_score(item: dict[str, Any]) -> tuple[int, int, int, int, in
 
 
 def is_valid_evidence_source(text: str) -> bool:
-    """Prüft ob ein Text als Evidence-Quelle taugt (nicht nur Metadaten/Header).
+    """Checks whether a text qualifies as an evidence source (not just metadata/header).
 
-    Returns False für Kopfzeilen, Testdokument-Marker, sehr kurze Zeilen
-    und andere nicht-inhaltliche Textfragmente.
+    Returns False for headers, test-document markers, very short lines,
+    and other non-substantive text fragments.
     """
     text_stripped = str(text or "").strip()
     if len(text_stripped) < _EVIDENCE_MIN_LENGTH:

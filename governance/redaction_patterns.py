@@ -1,9 +1,13 @@
-"""governance/redaction_patterns.py – Regex-Patterns, Konstanten und Regelwerk.
+"""governance/redaction_patterns.py – Regex patterns, constants, and rule set.
 
-Extrahiert aus governance/redaction.py (W2 God-File-Split).
-Enthält alle kompilierten regulären Ausdrücke, Stoplisten,
-die _RegexRule-Dataclass, Render-Funktionen, Validatoren
-und die _REGEX_RULES-Liste.
+Extracted from governance/redaction.py (W2 god-file split).
+Contains all compiled regular expressions, stoplists,
+the _RegexRule dataclass, render functions, validators,
+and the _REGEX_RULES list.
+
+Note: the patterns below target German-language legal/business documents
+(company suffixes, address formats, honorifics, etc.) and are intentionally
+not translated — they match content, not code.
 """
 
 from __future__ import annotations
@@ -13,7 +17,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 # ---------------------------------------------------------------------------
-# Basis-Patterns und Charsets
+# Base patterns and charsets
 # ---------------------------------------------------------------------------
 
 _WORD_CHARS = r"A-Za-z0-9ÄÖÜäöüß"
@@ -29,10 +33,10 @@ _PLACEHOLDER_LEAK_RE = re.compile(
 )
 
 # ---------------------------------------------------------------------------
-# Person/Party-Detection-Patterns
+# Person/party detection patterns
 # ---------------------------------------------------------------------------
 
-# Robuste, einfache Heuristik für Personen mit optionalem Dr.-Titel.
+# Robust, simple heuristic for persons with an optional "Dr." title.
 _PERSON_CANDIDATE_RE = re.compile(
     r"\b(?:Dr\.\s*)?[A-ZÄÖÜ][a-zäöüß]+(?:[\t\n\r\f\v ]+[A-ZÄÖÜ][a-zäöüß]+){1}\b"
 )
@@ -51,10 +55,10 @@ _PARTY_PERSON_RE = re.compile(
     r"(?P<name>(?:Dr\.\s*)?[A-ZÄÖÜ][a-zäöüß]+(?:[\t\n\r\f\v ]+[A-ZÄÖÜ][a-zäöüß]+){1})",
     flags=re.IGNORECASE,
 )
-# PR11 – P9: Firmennamen nach Rollenbezeichnung (Auftraggeber/Auftragnehmer etc.)
-# werden vollständig als Partei maskiert – auch bei CamelCase-Namen (LegalTech).
-# Wird VOR _PARTY_PERSON_RE gescannt, damit der volle Firmenname den partiellen
-# Person-Match (z. B. "Nordstadt LegalTech" ohne "GmbH") überschreibt.
+# PR11 – P9: Company names after a role designation (Auftraggeber/Auftragnehmer
+# etc.) are masked in full as a party – including CamelCase names (LegalTech).
+# Scanned BEFORE _PARTY_PERSON_RE, so the full company name overrides the
+# partial person match (e.g. "Nordstadt LegalTech" without "GmbH").
 _PARTY_COMPANY_RE = re.compile(
     r"\b(?:kläger(?:in)?|klaeger(?:in)?|beklagt(?:e|er|en)?|"
     r"vermieter(?:in)?|mieter(?:in)?|arbeitgeber(?:in)?|arbeitnehmer(?:in)?|"
@@ -76,9 +80,9 @@ _PARTY_COMPANY_RE = re.compile(
 )
 _TITLE_PREFIX_RE = re.compile(r"^(?:Dr\.\s*)", flags=re.IGNORECASE)
 _PSEUDONYM_TOKEN_RE = re.compile(r"^\[(?:PARTEI|PERSON)_[A-Z0-9]+\]$")
-# P1-A: Rechtsform-Suffixe die einen Firmennamen kennzeichnen.
-# Wenn ein via _PARTY_PERSON_RE gematchter Name direkt von einem dieser Suffixe
-# gefolgt wird, muss er als ORG (nicht PERSON) klassifiziert werden.
+# P1-A: Legal-form suffixes that identify a company name.
+# If a name matched via _PARTY_PERSON_RE is directly followed by one of these
+# suffixes, it must be classified as ORG (not PERSON).
 _TRAILING_ORG_SUFFIX_RE = re.compile(
     r"\s+(?:GmbH(?:\s*&\s*Co\.?\s*(?:KGaA|KG|OHG))?|AG|UG(?:\s*\(haftungsbeschränkt\))?|"
     r"KG|OHG|GbR|e\.?\s*K\.|SE|mbH|Co\.?\s*(?:KGaA|KG|OHG)|"
@@ -92,7 +96,7 @@ _ADDRESS_HINT_RE = re.compile(
 )
 
 # ---------------------------------------------------------------------------
-# Stoplisten und Token-Sets
+# Stoplists and token sets
 # ---------------------------------------------------------------------------
 
 _NON_PERSON_PREFIXES = {
@@ -115,8 +119,8 @@ _COMPOUND_TERM_SUFFIXES = re.compile(
     r"officer|partner|associate|counsel|sachbearbeiter|buchhalter|prokurist)\b",
     re.IGNORECASE,
 )
-# Stoplist: häufige juristische Begriffe / Tabellenköpfe / Boilerplate,
-# die fälschlich als PERSON erkannt werden können.
+# Stoplist: common legal terms / table headers / boilerplate that could
+# be mistakenly detected as PERSON.
 _PERSON_STOPLIST = {
     "fiktives testdokument",
     "nur zur systemprüfung",
@@ -138,8 +142,8 @@ _PERSON_STOPLIST = {
     "allgemeine geschaeftsbedingungen",
     "besondere vereinbarungen",
 }
-# Regex für Zeilen, die nur aus Großbuchstaben, Ziffern und Sonderzeichen
-# bestehen (Tabellenköpfe, Aktenzeichen-Fragmente).
+# Regex for lines consisting only of uppercase letters, digits, and special
+# characters (table headers, case-number fragments).
 _ALL_UPPER_LINE_RE = re.compile(r"^[A-ZÄÖÜ0-9\s\W]+$")
 _NON_PERSON_TOKENS = {
     "der",
@@ -216,13 +220,13 @@ _NON_PERSON_TOKENS = {
     "amtsgericht",
     "landgericht",
 }
-# PR11 – P5/P6: Erweiterbare Whitelist juristischer Satzanfangswörter und
-# allgemeiner Vertrags-Substantive, die NIE Personennamen sind.
-# Jedes Token hier (lowercase) blockiert einen False-Positive-Match in
-# _is_person_candidate, wenn es als erstes oder zweites Wort auftaucht.
+# PR11 – P5/P6: Extensible whitelist of legal sentence-starting words and
+# common contract nouns that are NEVER person names.
+# Each token here (lowercase) blocks a false-positive match in
+# _is_person_candidate when it appears as the first or second word.
 _NOT_A_PERSON_TOKENS: frozenset[str] = frozenset(
     {
-        # Satzanfangswörter (erscheinen nach Zeilenumbruch / Paragraphenkopf)
+        # Sentence-starting words (appear after a line break / clause heading)
         "soweit",
         "während",
         "waehrend",
@@ -231,7 +235,7 @@ _NOT_A_PERSON_TOKENS: frozenset[str] = frozenset(
         "sofern",
         "insoweit",
         "unbeschadet",
-        # Klausel- und Paragraphenköpfe
+        # Clause and section headings
         "nachvertragliches",
         "nachvertraglicher",
         "nachvertraglichen",
@@ -248,7 +252,7 @@ _NOT_A_PERSON_TOKENS: frozenset[str] = frozenset(
         "vertragslaufzeit",
         "gewährleistung",
         "gewaehrleistung",
-        # Tabellenanfänge / Boilerplate-Substantive
+        # Table-start / boilerplate nouns
         "mahnkosten",
         "verzugszinsen",
         "bearbeitungsgebühren",
@@ -284,7 +288,7 @@ _ROLE_CONTEXT_RE = re.compile(
 )
 
 # ---------------------------------------------------------------------------
-# Exclude-Patterns (Schutz vor Fehlalarmen)
+# Exclude patterns (guard against false positives)
 # ---------------------------------------------------------------------------
 
 _MONEY_EXCLUDE_RE = re.compile(r"\b\d{1,3}(?:\.\d{3})*,\d{2}\s?(?:EUR|€)\b")
@@ -292,7 +296,7 @@ _DATE_EXCLUDE_RE = re.compile(r"\b\d{1,2}\.\d{1,2}\.\d{2,4}\b")
 _CASE_ID_EXCLUDE_RE = re.compile(r"\b[A-Z]{1,4}[-/][A-Z0-9-]{3,}\b")
 
 # ---------------------------------------------------------------------------
-# Adress-Detection-Patterns
+# Address detection patterns
 # ---------------------------------------------------------------------------
 
 _ADDR_STREET_RE = re.compile(
@@ -309,7 +313,7 @@ _ADDR_PLZ_CITY_RE = re.compile(
 )
 
 # ---------------------------------------------------------------------------
-# External/Party-Meta-Patterns
+# External/party metadata patterns
 # ---------------------------------------------------------------------------
 
 _EXTERNAL_PARTY_META_LINE_RE = re.compile(
@@ -324,11 +328,11 @@ _EXTERNAL_ORG_RE = re.compile(
     r"Kanzlei|&\s*Partner)\b(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß0-9&'.,\-]*)*",
     flags=re.IGNORECASE,
 )
-# Bug 1 (P1): Standalone-ORG-Detection für Unternehmensname ohne Rollenkontext.
-# Matcht Firmennamen mit deutschen Rechtsform-Suffixen (erweiterter Satz).
-# Wird in pseudonymize_people() VOR _PERSON_CANDIDATE_RE eingesetzt, damit
-# kein Teilname (z.B. "Bäckerei Sonnenschein") als PERSON maskiert wird
-# und der Suffix ("GmbH & Co. KG") im Klartext bleibt.
+# Bug 1 (P1): Standalone-ORG detection for company names without role context.
+# Matches company names with German legal-form suffixes (extended set).
+# Used in pseudonymize_people() BEFORE _PERSON_CANDIDATE_RE, so no partial
+# name (e.g. "Bäckerei Sonnenschein") gets masked as PERSON and the suffix
+# ("GmbH & Co. KG") stays in plaintext.
 _STANDALONE_ORG_RE = re.compile(
     r"\b(?:[A-ZÄÖÜ][A-Za-zÄÖÜäöüß0-9&'.\-]+\s+){1,5}"
     r"(?:GmbH(?:\s*&\s*Co\.?\s*(?:KGaA|KG|OHG))?|AG|UG(?:\s*\(haftungsbeschränkt\))?|"
@@ -336,15 +340,15 @@ _STANDALONE_ORG_RE = re.compile(
     r"&\s*Co\.?\s*(?:KGaA|KG|OHG)|&\s*Partner(?:schaft)?|"
     r"Partnerschaft(?:sgesellschaft)?|PartG(?:\s*mbB)?|mbB)\b",
 )
-# FIX 4 (P1): Post-Processing-Schritt – bereinigt verbleibende Rechtsform-Suffixe
-# nach einem Platzhalter. Sicherheitsnetz für Fälle in denen ein Unternehmensname
-# nur teilweise durch ein vorheriges Pattern erfasst wurde.
-# BLOCKER 2: Erweitert um alle deutschen Rechtsform-Suffixe inkl. "& Co.", GmbH, AG etc.
+# FIX 4 (P1): Post-processing step – cleans up remaining legal-form suffixes
+# after a placeholder. Safety net for cases where a company name was only
+# partially captured by an earlier pattern.
+# BLOCKER 2: Extended to cover all German legal-form suffixes incl. "& Co.", GmbH, AG, etc.
 _ORPHAN_COMPANY_SUFFIX_RE = re.compile(
     r"(\[[A-Z][A-Z_0-9]*_\d+\])"
     r"\s*(?:"
     r"&\s*Co\.?\s*(?:KGaA|KG|OHG)\b"         # & Co. KG, & Co. KGaA, & Co. OHG
-    r"|&\s*Co\.?"                              # & Co. (alleinstehend)
+    r"|&\s*Co\.?"                              # & Co. (standalone)
     r"|GmbH(?:\s*&\s*Co\.?\s*(?:KGaA|KG|OHG))?"  # GmbH, GmbH & Co. KG
     r"|AG\b"
     r"|KG\b"
@@ -362,12 +366,12 @@ _ORPHAN_COMPANY_SUFFIX_RE = re.compile(
 )
 
 # ---------------------------------------------------------------------------
-# BIC-Validation
+# BIC validation
 # ---------------------------------------------------------------------------
 
-# FIX 5 (P2): Gültige ISO-3166-1-Alpha-2-Ländercodes für BIC/SWIFT-Validierung.
-# Verhindert Fehlalarme für Großbuchstaben-Wörter wie "SCHRIFTSATZ" oder "NOVEMBER",
-# deren Positionen 5-6 keinen gültigen Ländercode bilden.
+# FIX 5 (P2): Valid ISO 3166-1 alpha-2 country codes for BIC/SWIFT validation.
+# Prevents false positives for uppercase words like "SCHRIFTSATZ" or "NOVEMBER",
+# whose positions 5-6 do not form a valid country code.
 _BIC_VALID_COUNTRY_CODES: frozenset[str] = frozenset({
     "AD", "AE", "AF", "AG", "AI", "AL", "AM", "AO", "AQ", "AR", "AS", "AT",
     "AU", "AW", "AX", "AZ", "BA", "BB", "BD", "BE", "BF", "BG", "BH", "BI",
@@ -394,10 +398,10 @@ _BIC_VALID_COUNTRY_CODES: frozenset[str] = frozenset({
 
 
 def _is_valid_bic(bic: str) -> bool:
-    """Prüft ob ein gematchter String ein valides BIC-Format hat.
+    """Checks whether a matched string has a valid BIC format.
 
-    Validiert: Länge 8 oder 11 Zeichen, Positionen 5-6 sind ein gültiger
-    ISO-3166-1-Alpha-2-Ländercode.
+    Validates: length 8 or 11 characters, positions 5-6 are a valid
+    ISO 3166-1 alpha-2 country code.
     """
     s = bic.strip()
     if len(s) not in (8, 11):
@@ -405,7 +409,7 @@ def _is_valid_bic(bic: str) -> bool:
     return s[4:6].upper() in _BIC_VALID_COUNTRY_CODES
 
 # ---------------------------------------------------------------------------
-# _RegexRule-Dataclass
+# _RegexRule dataclass
 # ---------------------------------------------------------------------------
 
 
@@ -415,12 +419,12 @@ class _RegexRule:
     mask_type: str
     source_group: str | int = 0
     render: Callable[[re.Match[str], str], str] | None = None
-    # FIX 5 (P2): Optionaler Validator – wenn gesetzt, wird der gematchte source-
-    # String geprüft; gibt der Validator False zurück, wird der Match nicht maskiert.
+    # FIX 5 (P2): Optional validator – if set, the matched source string is
+    # checked; if the validator returns False, the match is not masked.
     validate: Callable[[str], bool] | None = None
 
 # ---------------------------------------------------------------------------
-# Render-Funktionen für _RegexRule
+# Render functions for _RegexRule
 # ---------------------------------------------------------------------------
 
 
@@ -439,14 +443,14 @@ def _render_court_and_placeholder(match: re.Match[str], placeholder: str) -> str
 
 
 def _render_birthdate_placeholder(match: re.Match[str], placeholder: str) -> str:
-    """Erhält den Kontext 'geboren am' / 'geb.' und ersetzt nur das Datum."""
+    """Preserves the context 'geboren am' / 'geb.' and replaces only the date."""
     return f"{match.group(1)}{placeholder}"
 
 # ---------------------------------------------------------------------------
-# ORG-Name-Validator
+# ORG name validator
 # ---------------------------------------------------------------------------
 
-# P1-A: Validator – lehnt Namen ab, die mit Rechtsform-Suffix enden (→ ORG, nicht PERSON).
+# P1-A: Validator – rejects names ending with a legal-form suffix (→ ORG, not PERSON).
 _ORG_SUFFIX_ENDS_RE = re.compile(
     r"(?:GmbH|AG|UG|KG|OHG|GbR|SE|mbH|mbB|eG|Inc\.?|Ltd\.?|S\.?A\.?|e\.?\s*V\.?|e\.?\s*K\.?"
     r"|PartG|Partner(?:schaft)?|Partnerschaft(?:sgesellschaft)?)\s*$",
@@ -455,11 +459,11 @@ _ORG_SUFFIX_ENDS_RE = re.compile(
 
 
 def _is_not_org_name(name: str) -> bool:
-    """Gibt False zurück wenn der Name ein Rechtsform-Suffix hat (→ ist eine Firma)."""
+    """Returns False if the name has a legal-form suffix (→ it's a company)."""
     return not _ORG_SUFFIX_ENDS_RE.search(str(name or "").strip())
 
 # ---------------------------------------------------------------------------
-# _REGEX_RULES – geordnete Liste aller Regex-Redaction-Regeln
+# _REGEX_RULES – ordered list of all regex redaction rules
 # ---------------------------------------------------------------------------
 
 _REGEX_RULES: list[_RegexRule] = [
@@ -475,8 +479,8 @@ _REGEX_RULES: list[_RegexRule] = [
         ),
         mask_type="ADDR",
     ),
-    # P1-A: validate=_is_not_org_name lehnt Namen mit Rechtsform-Suffix ab →
-    # diese werden stattdessen in pseudonymize_people als ORG/PARTEI maskiert.
+    # P1-A: validate=_is_not_org_name rejects names with a legal-form suffix →
+    # these get masked instead as ORG/PARTEI in pseudonymize_people.
     _RegexRule(
         pattern=re.compile(
             r"\b(?P<role>Klägerin|Kläger|Beklagte|Beklagter|Zeuge|Zeugin|"
@@ -494,10 +498,10 @@ _REGEX_RULES: list[_RegexRule] = [
         render=_render_role_and_placeholder,
         validate=_is_not_org_name,
     ),
-    # Bug 1 (P1): Kanzleinamen mit Rechtsform-Suffix (z.B. "RA Dr. Hoffmann & Partner")
-    # müssen vollständig als [ORG_N] maskiert werden, nicht als [PERSON_N] + Klartextsuffix.
-    # Diese Regel läuft VOR der RA-PERSON-Regel, damit der vollständige Kanzleiname
-    # (inkl. "& Partner / & Co. KG") in einem Schritt ersetzt wird.
+    # Bug 1 (P1): Firm names with a legal-form suffix (e.g. "RA Dr. Hoffmann & Partner")
+    # must be masked in full as [ORG_N], not as [PERSON_N] + plaintext suffix.
+    # This rule runs BEFORE the RA-PERSON rule, so the full firm name
+    # (incl. "& Partner / & Co. KG") is replaced in one step.
     _RegexRule(
         pattern=re.compile(
             r"\b(?:Rechtsanwältin|Rechtsanwalt|RA)\s+"
@@ -530,24 +534,24 @@ _REGEX_RULES: list[_RegexRule] = [
         mask_type="ADDR",
     ),
     _RegexRule(pattern=re.compile(r"\b[A-Z]{2}\d{2}(?:[\s\-]*\d){10,30}\b"), mask_type="IBAN"),
-    # Bug 3 (P0): BIC-Codes (8 oder 11 Zeichen, SWIFT-Format) maskieren.
-    # Format: 4 Buchstaben (Bank) + 2 Buchstaben (Land) + 2 alphanumerisch (Ort)
-    # + optional 3 alphanumerisch (Filiale) = 8 oder 11 Zeichen.
-    # FIX 5 (P2): validate=_is_valid_bic prüft ob Positionen 5-6 ein gültiger
-    # ISO-3166-1-Alpha-2-Ländercode sind. Verhindert Fehlalarme für deutsche
-    # Großbuchstaben-Wörter wie "SCHRIFTSATZ" (IF) oder "NOVEMBER" (MB).
+    # Bug 3 (P0): Masks BIC codes (8 or 11 characters, SWIFT format).
+    # Format: 4 letters (bank) + 2 letters (country) + 2 alphanumeric (location)
+    # + optional 3 alphanumeric (branch) = 8 or 11 characters.
+    # FIX 5 (P2): validate=_is_valid_bic checks whether positions 5-6 are a
+    # valid ISO 3166-1 alpha-2 country code. Prevents false positives for
+    # German uppercase words like "SCHRIFTSATZ" (IF) or "NOVEMBER" (MB).
     _RegexRule(
         pattern=re.compile(r"\b[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?\b"),
         mask_type="BIC",
         validate=_is_valid_bic,
     ),
-    # Bug 2a (P0): Geburtsdaten maskieren – Kontextmuster "geboren am" / "geb.".
-    # source_group=2 → nur das Datum wird als geheimer Wert gespeichert.
-    # render → Kontext ("geboren am ") bleibt erhalten, Datum wird ersetzt.
-    # FIX 3 (P1): Erweitert um textuelles Format "DD. Monatname YYYY" für alle
-    # deutschen Monatsnamen (z.B. "14. März 1982", "22. September 1968").
-    # Die vier Regeln decken alle Kombinationen aus DD.MM.YYYY und DD. Monatname YYYY
-    # mit den Kontextpräfixen "geboren am" und "geb." ab.
+    # Bug 2a (P0): Masks dates of birth – context pattern "geboren am" / "geb.".
+    # source_group=2 → only the date is stored as the secret value.
+    # render → context ("geboren am ") is preserved, the date is replaced.
+    # FIX 3 (P1): Extended to cover the textual format "DD. Monatname YYYY" for
+    # all German month names (e.g. "14. März 1982", "22. September 1968").
+    # The four rules cover all combinations of DD.MM.YYYY and DD. Monatname YYYY
+    # with the context prefixes "geboren am" and "geb.".
     _RegexRule(
         pattern=re.compile(
             r"(geboren\s+am\s+)(\d{1,2}\.\d{1,2}\.\d{2,4})\b",
@@ -588,7 +592,7 @@ _REGEX_RULES: list[_RegexRule] = [
         source_group=2,
         render=_render_birthdate_placeholder,
     ),
-    # P1-B: Zusätzliche Geburtsdatum-Kontextmuster – "geboren:", "Geburtstag:", "Geburtsdatum:"
+    # P1-B: Additional date-of-birth context patterns – "geboren:", "Geburtstag:", "Geburtsdatum:"
     _RegexRule(
         pattern=re.compile(
             r"(geboren\s*:\s*)(\d{1,2}\.\d{1,2}\.\d{2,4})\b",
@@ -645,9 +649,9 @@ _REGEX_RULES: list[_RegexRule] = [
         pattern=re.compile(r"\b(?:DE\s?)?\d{9,11}\b(?=\s*(?:USt|Steuer|St\.-Nr))"),
         mask_type="TAXID",
     ),
-    # Bug 2 (P1): Handelsregisternummern maskieren (HRB/HRA/PR/VR + Ziffernfolge).
-    # Referenz-Muster: analog zu BIC/IBAN auf dem fix/redaction-and-fristen-p0-Branch.
-    # In M&A-Dokumenten identifiziert die HRB-Nummer die Zielgesellschaft eindeutig.
+    # Bug 2 (P1): Masks commercial-register numbers (HRB/HRA/PR/VR + digit sequence).
+    # Reference pattern: analogous to BIC/IBAN on the fix/redaction-and-fristen-p0 branch.
+    # In M&A documents, the HRB number uniquely identifies the target company.
     _RegexRule(
         pattern=re.compile(r"\b(?:HRB|HRA|PR|VR)\s+\d+\b"),
         mask_type="HRB",
@@ -655,7 +659,7 @@ _REGEX_RULES: list[_RegexRule] = [
 ]
 
 # ---------------------------------------------------------------------------
-# Company-Name-Patterns (für _apply_company_redaction)
+# Company name patterns (for _apply_company_redaction)
 # ---------------------------------------------------------------------------
 
 _COMPANY_ARTICLE_RE = re.compile(
@@ -670,35 +674,35 @@ _COMPANY_NAME_RE = re.compile(
 )
 
 # ---------------------------------------------------------------------------
-# External-Mask Post-Processing-Patterns
+# External-mask post-processing patterns
 # ---------------------------------------------------------------------------
 
 _EXTERNAL_SOURCE_LINE_RE = re.compile(r"^\s*Quelle\s+S\.\s*\S", re.IGNORECASE)
 
-# Post-Processing: Klarname direkt nach Platzhalter entfernen
-# z.B. "[PERSON_3]. Anna Weiß" → "[PERSON_3]"
+# Post-processing: removes a plaintext name directly after a placeholder
+# e.g. "[PERSON_3]. Anna Weiß" → "[PERSON_3]"
 _EXT_NAME_AFTER_PLACEHOLDER_RE = re.compile(
     r'(\[(?:PERSON|PARTEI|ORG)_\d+\])[.\s]+[A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)*',
     re.UNICODE,
 )
 
-# Post-Processing: Hausnummer direkt nach Platzhalter entfernen
-# z.B. "[PERSON_1] 77" oder "[ADDR_2] 4a" → nur Platzhalter
+# Post-processing: removes a house number directly after a placeholder
+# e.g. "[PERSON_1] 77" or "[ADDR_2] 4a" → placeholder only
 _EXT_HAUSNR_AFTER_PLACEHOLDER_RE = re.compile(
     r'(\[(?:PERSON|PARTEI|ORG|ADDR)_\d+\])\s+\d{1,4}[a-zA-Z]?(?=\s|$)',
     re.UNICODE,
 )
 
 # ---------------------------------------------------------------------------
-# Post-Redaction PII-Validator (fail-closed für Mandantenexport)
+# Post-redaction PII validator (fail-closed for client export)
 # ---------------------------------------------------------------------------
 
-# Entfernt alle bekannten Redaction-Platzhalter vor PII-Validierung.
-# Verhindert False Positives durch Zahlenfolgen in Platzhaltern.
-# WICHTIG: PARTEI muss hier explizit gelistet sein, damit Klageschrift-Exporte
-# mit [PARTEI_1]/[PARTEI_2]-Labels nicht fälschlicherweise vom Leak-Guard
-# geblockt werden (z. B. durch Ziffernfolgen in "[PARTEI_1]" die einem
-# Telefon- oder PLZ-Muster ähneln könnten).
+# Removes all known redaction placeholders before PII validation.
+# Prevents false positives from digit sequences inside placeholders.
+# IMPORTANT: PARTEI must be listed explicitly here, so that complaint/filing
+# exports with [PARTEI_1]/[PARTEI_2] labels are not incorrectly blocked by
+# the leak guard (e.g. via digit sequences in "[PARTEI_1]" that could
+# resemble a phone or postal-code pattern).
 _VALIDATOR_PLACEHOLDER_PATTERN = re.compile(
     r'\[(?:ADDR|PERSON|BIC|EMAIL|IBAN|PARTEI|MASK|ORG|'
     r'TELEFON|PHONE|DATUM|AKTENZEICHEN|BETRAG|ADRESSE|'
@@ -706,22 +710,22 @@ _VALIDATOR_PLACEHOLDER_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Pattern die nach Redaction NICHT mehr im Mandantenexport vorkommen dürfen
+# Patterns that must NOT appear in a client export after redaction
 _POST_REDACTION_PII_PATTERNS = [
-    # Straße + Hausnummer
+    # Street + house number
     re.compile(
         r'\b[A-ZÄÖÜ][a-zäöüß\-]+'
         r'(?:straße|str\.|gasse|weg|allee|platz|ring|damm|chaussee|ufer)'
         r'\s+\d+[a-zA-Z]?\b',
         re.IGNORECASE,
     ),
-    # PLZ + Stadt
+    # Postal code + city
     re.compile(r'\b\d{5}\s+[A-ZÄÖÜ][a-zäöüß\-]+\b'),
     # IBAN
     re.compile(r'\bDE\d{2}[\s\d]{15,25}\b'),
-    # E-Mail
+    # Email
     re.compile(r'\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}\b'),
-    # Telefon
+    # Phone
     re.compile(r'(?<!\d)(?:\+49[\s]?|0)[1-9][0-9]{2,}(?:[\s\/\-][0-9]{2,})+|(?<!\d)(?:\+49|0)[1-9][0-9]{4,}|(?<!\d)0[1-9][0-9]{1,}\/[0-9]{3,}'),
 ]
 
@@ -734,7 +738,7 @@ _POST_REDACTION_PII_PATTERN_NAMES = [
 ]
 
 # ---------------------------------------------------------------------------
-# Shared Engine-Helfer (gebraucht von redaction.py UND pseudonymizer.py)
+# Shared engine helpers (needed by redaction.py AND pseudonymizer.py)
 # ---------------------------------------------------------------------------
 
 

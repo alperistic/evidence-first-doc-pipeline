@@ -1,6 +1,6 @@
-"""services/analysis_service.py – Analyse-Orchestrierung und Audit-Logging.
+"""services/analysis_service.py – Analysis orchestration and audit logging.
 
-Enthält keine Streamlit-Abhängigkeiten. Gibt reine Daten zurück.
+Contains no Streamlit dependencies. Returns plain data.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ class AnalysisResult(TypedDict):
 
 
 # ---------------------------------------------------------------------------
-# Async Segment-Analyse mit Concurrency-Limit (Semaphore)
+# Async segment analysis with concurrency limit (semaphore)
 # ---------------------------------------------------------------------------
 
 
@@ -43,7 +43,7 @@ async def _run_segment_async(
     citation_verify_mode: str,
     source_pages_by_no: dict[int, dict],
 ) -> tuple[int, dict]:
-    """Führt den offiziellen Workflow-Segmentpfad in einem Thread aus."""
+    """Runs the official workflow segment path in a thread."""
     segment_id = seg.get("segment_id", 0)
     async with semaphore:
         loop = asyncio.get_running_loop()
@@ -73,7 +73,7 @@ async def _run_segments_async(
     citation_verify_mode: str,
     source_pages_by_no: dict[int, dict],
 ) -> list[dict]:
-    """Async-Orchestrierung aller Segmente mit asyncio.Semaphore."""
+    """Async orchestration of all segments using asyncio.Semaphore."""
     semaphore = asyncio.Semaphore(max_concurrent)
     tasks = [
         _run_segment_async(
@@ -104,14 +104,14 @@ def run_segment_analysis(
     source_pages_by_no: dict[int, dict],
     max_workers: int,
 ) -> list[dict]:
-    """Führt die Segment-Analyse parallel aus und gibt geordnete Ergebnisse zurück.
+    """Runs the segment analysis in parallel and returns ordered results.
 
-    Verwendet asyncio mit Semaphore-basiertem Concurrency-Limit
-    (AppConfig.max_concurrent_segments). Die synchronen LLM-Calls in
-    _process_segment werden via run_in_executor in Threads ausgeführt.
+    Uses asyncio with a semaphore-based concurrency limit
+    (AppConfig.max_concurrent_segments). The synchronous LLM calls in
+    _process_segment are run in threads via run_in_executor.
 
     Raises:
-        EnvironmentError: Bei fehlender Azure-Konfiguration.
+        EnvironmentError: If the Azure configuration is missing.
     """
     cfg = get_config()
     max_concurrent = max(1, int(max_workers or cfg.max_concurrent_segments))
@@ -172,10 +172,10 @@ def log_and_aggregate_results(
     extract_ms: int,
     segment_ms: int,
 ) -> tuple[dict, dict]:
-    """Loggt jedes Segment ins Audit-Log und aggregiert zu result_bundle + audit_entry.
+    """Logs each segment to the audit log and aggregates into result_bundle + audit_entry.
 
     Returns:
-        (result_bundle, audit_entry) – Beide Dicts sind direkt für st.session_state geeignet.
+        (result_bundle, audit_entry) – Both dicts are ready to use directly with st.session_state.
     """
     ts = datetime.now(timezone.utc).isoformat()
 
@@ -268,7 +268,7 @@ def log_and_aggregate_results(
             output_json=output_json,
         )
 
-    # -- Aggregation --------------------------------------------------------
+    # -- Aggregation ----------------------------------------------------------
     result_bundle = {
         "segment_results": segment_results,
         "segment_count": len(segment_results),
@@ -308,9 +308,9 @@ def log_and_aggregate_results(
             sorted(
                 {
                     normalize_doc_class(
-                        # FIX 5: Prefer LLM's actual analyzed doc type over segmenter's guess.
+                        # Prefer the LLM's actual analyzed doc type over the segmenter's guess.
                         # llm_doc_class_guess is set from analysis_payload.document_type when
-                        # auto_classify is True; falls back to segmenter's segment_doc_class.
+                        # auto_classify is True; falls back to the segmenter's segment_doc_class.
                         (item.get("doc_class_fields", {}) or {}).get("llm_doc_class_guess")
                         or (item.get("doc_class_fields", {}) or {}).get("segment_doc_class")
                     )
@@ -358,21 +358,20 @@ def run_analysis_with_cache(
     extract_ms: int,
     segment_ms: int,
 ) -> AnalysisResult:
-    """Führt die Analyse durch – mit optionalem Cache-Lookup.
+    """Runs the analysis – with optional cache lookup.
 
-    Wenn AppConfig.doc_cache_enabled=True und ein gültiger Cache-Eintrag
-    (doc_hash + policy_hash + model + runtime-scope, TTL nicht abgelaufen) existiert,
-    wird das gecachte Ergebnis zurückgegeben ohne einen LLM-Call.
+    If AppConfig.doc_cache_enabled=True and a valid cache entry
+    (doc_hash + policy_hash + model + runtime scope, TTL not expired) exists,
+    the cached result is returned without an LLM call.
 
-    Bei Cache-Miss läuft die normale Analyse und das Ergebnis wird
-    anschließend gecacht.
+    On a cache miss, the normal analysis runs and the result is
+    cached afterwards.
 
-    §203-Konformität: Es wird ausschließlich das anonymisierte result_bundle
-    gespeichert. Klartext-Dokumentinhalte sind zu keinem Zeitpunkt Teil
-    des gecachten Ergebnisses.
+    Cache content: only the redacted/anonymized result_bundle is stored.
+    Plaintext document content is never part of the cached result.
 
     Returns:
-        AnalysisResult mit result_bundle, audit_entry und cache_hit-Flag.
+        AnalysisResult with result_bundle, audit_entry, and cache_hit flag.
     """
     cfg = get_config()
 

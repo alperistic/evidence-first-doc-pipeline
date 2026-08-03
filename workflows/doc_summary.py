@@ -1,11 +1,11 @@
 """
-Workflow 1: Dokumenten-Zusammenfassung (§203-konform).
+Workflow 1: Document summary.
 
-Adapter über core/pipeline._process_segment. Enthält keine eigene Analyse-Logik –
-die gesamte Verarbeitung läuft in core/. Dieser Workflow ist der Einstiegspunkt
-für app.py und künftige Workflow-2/3-Pendants.
+Adapter over core/pipeline._process_segment. Contains no analysis logic of its
+own – all processing happens in core/. This workflow is the entry point
+used by app.py and future workflow-2/3 counterparts.
 
-LexGuard (governance/redaction.py) wird vor diesem Workflow von app.py ausgeführt.
+The governance layer (governance/redaction.py) is run by app.py before this workflow.
 """
 
 from __future__ import annotations
@@ -60,27 +60,27 @@ class DocSummaryRuntimeConfig:
 
 class DocSummaryWorkflow(BaseWorkflow):
     """
-    Workflow 1: Strukturierte Dokumenten-Zusammenfassung.
+    Workflow 1: Structured document summary.
 
-    Verarbeitet den aktuellen Produktiv-Flow über einen stabilen Einstiegspunkt:
-    Runtime-Config auflösen, segmentieren, analysieren.
+    Processes the current main flow through a stable entry point:
+    resolve runtime config, segment, analyze.
     """
 
     @property
     def doc_class(self) -> str:
-        return "alle"  # Workflow 1 ist doc-class-agnostisch
+        return "alle"  # Workflow 1 is doc-class-agnostic
 
     def process(self, pages: list[Any], policy: Any, redaction_context: Any) -> dict:
         """
-        Nicht für direkten Aufruf aus app.py vorgesehen.
-        app.py nutzt build_segments() + run_analysis() für den offiziellen Flow.
+        Not intended for direct use from app.py.
+        app.py uses build_segments() + run_analysis() for the official flow.
 
-        Diese Methode erfüllt das BaseWorkflow-Interface und ermöglicht
-        künftige Unit-Tests ohne Streamlit-Kontext.
+        This method satisfies the BaseWorkflow interface and enables
+        future unit tests without a Streamlit context.
         """
         raise NotImplementedError(
-            "DocSummaryWorkflow.process() ist nicht für direkten Aufruf vorgesehen. "
-            "Nutze build_segments() und run_analysis() für den Hauptpfad."
+            "DocSummaryWorkflow.process() is not intended for direct use. "
+            "Use build_segments() and run_analysis() for the main path."
         )
 
     @staticmethod
@@ -239,22 +239,22 @@ class DocSummaryWorkflow(BaseWorkflow):
         source_pages_by_no: dict[int, dict],
     ) -> dict:
         """
-        Verarbeitet ein einzelnes Segment und gibt das Analyse-Dict zurück.
+        Processes a single segment and returns the analysis dict.
 
-        Delegiert vollständig an core/pipeline._process_segment.
-        Services nutzen diese Methode statt _process_segment direkt.
+        Delegates entirely to core/pipeline._process_segment.
+        Services use this method instead of calling _process_segment directly.
 
         Args:
-            seg: Segment-Dict aus segmenter.py (pages, doc_type_guess, etc.)
-            reverse_mapping: Pseudonym -> Klartext-Mapping aus redaction.py
-            context_mapping: Kontext-Mapping für Evidence-Anreicherung
-            auto_classify: Ob der LLM die Dokumentklasse selbst bestimmen darf
-            citation_verify_enabled: Ob Citation-Verifikation aktiv ist
-            citation_verify_mode: Modus der Citation-Verifikation
-            source_pages_by_no: Original-Seiten (unredigiert) nach Seitennummer
+            seg: Segment dict from segmenter.py (pages, doc_type_guess, etc.)
+            reverse_mapping: Pseudonym -> plaintext mapping from redaction.py
+            context_mapping: Context mapping for evidence enrichment
+            auto_classify: Whether the LLM is allowed to determine the document class itself
+            citation_verify_enabled: Whether citation verification is active
+            citation_verify_mode: Citation verification mode
+            source_pages_by_no: Original (unredacted) pages keyed by page number
 
         Returns:
-            Analyse-Dict mit analysis_redacted, doc_class_fields, token_count, etc.
+            Analysis dict with analysis_redacted, doc_class_fields, token_count, etc.
         """
         return _process_segment(
             seg,

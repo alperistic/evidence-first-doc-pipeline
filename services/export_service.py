@@ -1,7 +1,7 @@
-"""services/export_service.py – Export-Generierung (PDF/DOCX).
+"""services/export_service.py – Export generation (PDF/DOCX).
 
-Enthält keine Streamlit-Abhängigkeiten. Gibt reine Daten zurück.
-Wirft RedactionLeakError wenn Mandantenexport undicht ist.
+Contains no Streamlit dependencies. Returns plain data.
+Raises RedactionLeakError if the external (redacted) export still leaks PII.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from governance.redaction import validate_mandantenexport  # raises RedactionLea
 
 @dataclass
 class ExportBundle:
-    """Enthält alle generierten Export-Daten (PDF/DOCX, intern/extern)."""
+    """Holds all generated export data (PDF/DOCX, internal/external)."""
 
     internal_pdf_bytes: bytes
     external_pdf_bytes: bytes
@@ -45,16 +45,16 @@ def build_exports(
     *,
     redact_required: bool = True,
 ) -> ExportBundle:
-    """Erzeugt alle Export-Formate (PDF/DOCX, intern/extern).
+    """Generates all export formats (PDF/DOCX, internal/external).
 
     Args:
-        redact_required: Wenn False, wurde kein Redact-Durchlauf ausgeführt.
-            In diesem Fall wird validate_mandantenexport() übersprungen, da
-            echte PII im Text erwartet wird und kein Leak vorliegt.
+        redact_required: If False, no redaction pass was run. In that case
+            validate_mandantenexport() is skipped, since real PII in the
+            text is expected and this is not a leak.
 
     Raises:
-        RedactionLeakError: Wenn redact_required=True und der Mandantenexport
-            noch PII enthält.
+        RedactionLeakError: If redact_required=True and the external
+            (redacted) export still contains PII.
     """
     redacted_export_segments = _build_redacted_export_payload(segment_results)
     internal_segments = apply_output_mode(
@@ -113,9 +113,9 @@ def build_exports(
         if part.strip()
     )
 
-    # Mandantenexport-Validierung – nur wenn Redact-Durchlauf aktiv war.
-    # Bei redact_required=False lief keine Pseudonymisierung → echte PII im
-    # Export ist erwartet, kein Leak im Sinne des Guards.
+    # External-export validation - only when a redaction pass was active.
+    # With redact_required=False, no pseudonymization ran -> real PII in
+    # the export is expected, not a leak from the guard's perspective.
     if redact_required:
         validate_mandantenexport(external_export_text)
 
@@ -130,22 +130,22 @@ def build_exports(
     internal_pdf_bytes = to_pdf_bytes(
         internal_export_text,
         audit_entry,
-        title="LATE - Kanzleiakte (intern, Klartext)",
+        title="Internal version (unredacted)",
     )
     external_pdf_bytes = to_pdf_bytes(
         external_export_text,
         audit_entry,
-        title="LATE - Mandantenfassung (redigiert)",
+        title="External version (redacted)",
     )
     internal_docx_bytes = to_docx_bytes(
         internal_export_text,
         audit_entry,
-        title_text="LATE – Kanzleiakte (intern, Klartext)",
+        title_text="Internal version (unredacted)",
     )
     external_docx_bytes = to_docx_bytes(
         external_export_text,
         audit_entry,
-        title_text="LATE – Mandantenfassung (redigiert)",
+        title_text="External version (redacted)",
     )
 
     _log.info(

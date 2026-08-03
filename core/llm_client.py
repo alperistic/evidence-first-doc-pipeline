@@ -16,7 +16,7 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency in tests
     class AzureOpenAI:  # type: ignore[no-redef]
         def __init__(self, *args, **kwargs) -> None:
             del args, kwargs
-            raise ModuleNotFoundError("openai SDK fehlt; bitte requirements installieren.")
+            raise ModuleNotFoundError("openai SDK is missing; please install requirements.")
 
 from core.config import get_config
 from core.models import BaseModel, LLMResult, ValidationError
@@ -60,7 +60,7 @@ def _parse_response_json(content: str) -> tuple[dict | None, str | None]:
             return json.loads(candidate), None
         except json.JSONDecodeError as exc:
             return None, f"JSONDecodeError: {exc}"
-    return None, "Kein JSON-Objekt im Modell-Output gefunden."
+    return None, "No JSON object found in the model output."
 
 
 def _ensure_env() -> None:
@@ -71,8 +71,8 @@ def _ensure_env() -> None:
     ]
     if missing:
         raise EnvironmentError(
-            f"Fehlende Umgebungsvariablen: {', '.join(missing)}. "
-            "Bitte .env.example nach .env kopieren und ausfüllen."
+            f"Missing environment variables: {', '.join(missing)}. "
+            "Please copy .env.example to .env and fill it in."
         )
 
 
@@ -138,8 +138,8 @@ def _invoke_json_task(
         has_token_usage = total_tokens is not None
         model_id = response.model or deployment
 
-        # Falls Ausgabe abgeschnitten wurde (finish_reason=length), einmal mit höherem
-        # Token-Budget erneut anfordern, um JSON-Abbrüche zu vermeiden.
+        # If the output was truncated (finish_reason=length), retry once with a
+        # higher token budget to avoid a broken/incomplete JSON response.
         if finish_reason == "length":
             retry_tokens = max(max_output_tokens * 2, 2200)
             retry_response = client.chat.completions.create(
@@ -149,9 +149,9 @@ def _invoke_json_task(
                     {
                         "role": "user",
                         "content": (
-                            "Die vorherige Antwort war abgeschnitten. "
-                            "Gib das vollständige JSON erneut aus, exakt nach Schema, "
-                            "ohne zusätzlichen Text."
+                            "The previous answer was truncated. "
+                            "Output the complete JSON again, exactly matching the schema, "
+                            "with no additional text."
                         ),
                     }
                 ],
@@ -189,7 +189,7 @@ def _invoke_json_task(
                 parsed = {
                     "raw_text": content,
                     "parse_error": True,
-                    "message": f"JSON-Schema nicht valide: {exc.errors()[0].get('msg', 'ValidationError')}",
+                    "message": f"JSON schema invalid: {exc.errors()[0].get('msg', 'ValidationError')}",
                 }
                 return LLMResult(
                     parsed=parsed,
@@ -207,7 +207,7 @@ def _invoke_json_task(
             parsed={
                 "raw_text": content,
                 "parse_error": True,
-                "message": parse_error or "JSON-Schema nicht valide.",
+                "message": parse_error or "JSON schema invalid.",
             },
             token_count=token_count,
             model=model_id,

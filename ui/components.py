@@ -1,6 +1,6 @@
 """
-ui/components.py – Wiederverwendbare Streamlit-Render-Komponenten für LATE.
-Enthält UI-Hilfsfunktionen, die aus app.py ausgelagert wurden.
+ui/components.py – Reusable Streamlit render components for the pipeline.
+Contains UI helper functions that were factored out of app.py.
 """
 
 import streamlit as st
@@ -25,7 +25,7 @@ def _render_citations(citations: list[dict]) -> None:
         section_hint = (citation.get("section_hint") or "").strip()
         quote = _clean_quote(citation.get("quote_snippet", ""))
 
-        headline = f"Beleg {idx} · S. {page}"
+        headline = f"Evidence {idx} · p. {page}"
         if section_hint:
             headline += f" · {section_hint}"
         st.caption(headline)
@@ -33,7 +33,7 @@ def _render_citations(citations: list[dict]) -> None:
         if quote:
             st.markdown(f"> {quote}")
         else:
-            st.caption("Kein darstellbarer Auszug vorhanden.")
+            st.caption("No displayable excerpt available.")
 
 
 def _render_evidence_map(evidence_map: list[dict]) -> None:
@@ -41,10 +41,10 @@ def _render_evidence_map(evidence_map: list[dict]) -> None:
     for item in evidence_map or []:
         rows.append(
             {
-                "Feld": item.get("field", ""),
-                "Wert": item.get("value", ""),
-                "Seite": item.get("page") if item.get("page") is not None else "missing",
-                "Zitat": _clean_quote(item.get("quote", "")),
+                "Field": item.get("field", ""),
+                "Value": item.get("value", ""),
+                "Page": item.get("page") if item.get("page") is not None else "missing",
+                "Quote": _clean_quote(item.get("quote", "")),
             }
         )
     if rows:
@@ -59,10 +59,10 @@ def _render_claim_items(items: list[dict], *, max_items: int | None = None) -> N
             continue
         st.markdown(f"– {text}")
         if item.get("citations"):
-            with st.expander("Quelle / Beleg", expanded=False):
+            with st.expander("Source / evidence", expanded=False):
                 _render_citations(item.get("citations", []))
         else:
-            st.caption("unverified – Beleg fehlt (Rückfrage erforderlich)")
+            st.caption("unverified – evidence missing (follow-up required)")
 
 
 def _verified_claims(items: list[dict], max_items: int) -> list[dict]:
@@ -102,21 +102,21 @@ def _format_summary_evidence_line(item: dict, doc_type: str) -> str:
         return ""
     value = str(item.get("value", "") or "").strip()
     page = item.get("page", "?")
-    return f"– {label}: {value} (S. {page})"
+    return f"– {label}: {value} (p. {page})"
 
 
 def _render_aktenvermerk_block(analysis: dict, evidence_map: list[dict], *, show_title: bool = True) -> None:
     if show_title:
-        st.markdown("**Aktennotiz (intern) (arbeitsfähig, neutral)**")
+        st.markdown("**Case memo (internal) (working draft, neutral tone)**")
 
-    st.markdown("**Belegte Fakten (max. 10)**")
+    st.markdown("**Evidenced facts (max. 10)**")
     verified_facts = _verified_claims(list(analysis.get("kernaussagen", [])), max_items=10)
     if verified_facts:
         _render_claim_items(verified_facts, max_items=10)
     else:
         st.markdown("– missing (Rückfrage erforderlich)")
 
-    st.markdown("**Fristen / Termine**")
+    st.markdown("**Deadlines / dates**")
     fristen = _dedupe_summary_items(_evidence_by_fields(
         evidence_map,
         ("fristen_termine", "datum_beginn", "kuendigung_fristen"),
@@ -124,24 +124,24 @@ def _render_aktenvermerk_block(analysis: dict, evidence_map: list[dict], *, show
     ))
     if fristen:
         for item in fristen:
-            st.markdown(f"– {item.get('value')} (S. {item.get('page', '?')})")
+            st.markdown(f"– {item.get('value')} (p. {item.get('page', '?')})")
     else:
         st.markdown("– missing (Rückfrage erforderlich)")
 
-    st.markdown("**Unklarheiten (dokumentbezogen)**")
+    st.markdown("**Open questions (document-related)**")
     if analysis.get("auffaelligkeiten"):
         _render_claim_items(list(analysis.get("auffaelligkeiten", []))[:10], max_items=10)
     else:
         st.markdown("– keine")
 
-    st.markdown("**Rückfragen an Mandant (Missing Info)**")
+    st.markdown("**Follow-up questions for the client (missing info)**")
     if analysis.get("missing_info"):
         for item in list(analysis.get("missing_info", []))[:10]:
             st.markdown(f"– {item}")
     else:
         st.markdown("– keine")
 
-    st.markdown("**To-dos (Arbeitsaufgaben)**")
+    st.markdown("**To-dos (work items)**")
     todos_filtered = [item for item in list(analysis.get("todos", []))[:10] if not _is_generic_todo(str(item))]
     if todos_filtered:
         for item in todos_filtered:
@@ -150,6 +150,6 @@ def _render_aktenvermerk_block(analysis: dict, evidence_map: list[dict], *, show
         st.markdown("– keine")
 
     if analysis.get("prueffragen"):
-        st.markdown("**Prüffragen (zu prüfen)**")
+        st.markdown("**Questions to verify**")
         for item in list(analysis.get("prueffragen", []))[:8]:
             st.markdown(f"– {item}")

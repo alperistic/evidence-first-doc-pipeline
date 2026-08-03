@@ -1,17 +1,18 @@
-"""core/doc_cache.py – SHA256-basierter Analyse-Cache (§203-konform).
+"""core/doc_cache.py – SHA256-based analysis cache.
 
-Cache-Key:   SHA256(doc_hash + "|" + policy_hash + "|" + model + "|" + runtime_scope)
-Storage:     SQLite (in-memory für Tests, Datei für Produktion)
-TTL:         konfigurierbar über AppConfig.doc_cache_ttl_seconds
-Konformität: Es wird NIEMALS Klartext gespeichert – nur der Cache-Key
-             (Hash) und das bereits anonymisierte result_bundle/audit_entry.
+Cache key:   SHA256(doc_hash + "|" + policy_hash + "|" + model + "|" + runtime_scope)
+Storage:     SQLite (in-memory for tests, file-based for production)
+TTL:         configurable via AppConfig.doc_cache_ttl_seconds
+Data handling: only the cache key (a hash) and the already-anonymized
+             result_bundle/audit_entry are ever stored – plaintext document
+             content is never written to this cache.
 
 Public API:
     build_cache_key(doc_hash, policy_hash, model, runtime_scope="") → str
     get_cached_result(cache_key, ttl_seconds) → CacheHit | None
     put_cached_result(cache_key, result_bundle, audit_entry) → None
-    clear_expired(ttl_seconds) → int          (Anzahl gelöschter Rows)
-    _set_db_path(path)                        (nur für Tests)
+    clear_expired(ttl_seconds) → int          (number of deleted rows)
+    _set_db_path(path)                        (test use only)
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from core.logging_config import get_logger
 _log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# DB-Pfad (override via _set_db_path in Tests)
+# DB path (override via _set_db_path in tests)
 # ---------------------------------------------------------------------------
 
 _DEFAULT_DB_PATH = Path("doc_cache.sqlite")
@@ -38,7 +39,7 @@ _db_lock = threading.Lock()
 
 
 def _set_db_path(path: str | Path) -> None:
-    """Setzt den DB-Pfad. Nur für Tests verwenden."""
+    """Sets the DB path. Test use only."""
     global _db_path
     _db_path = Path(path)
 
@@ -76,9 +77,9 @@ def build_cache_key(
     model: str,
     runtime_scope: str = "",
 ) -> str:
-    """Berechnet den Cache-Key als SHA256(doc_hash|policy_hash|model|runtime_scope).
+    """Computes the cache key as SHA256(doc_hash|policy_hash|model|runtime_scope).
 
-    Enthält keinen Klartext – nur Hashes und Modellname.
+    Contains no plaintext – only hashes and the model name.
     """
     raw = f"{doc_hash}|{policy_hash}|{model}|{runtime_scope}"
     return sha256(raw.encode("utf-8")).hexdigest()
@@ -92,12 +93,12 @@ class CacheHit(TypedDict):
 
 
 def get_cached_result(cache_key: str, ttl_seconds: int) -> CacheHit | None:
-    """Gibt ein gecachtes Ergebnis zurück oder None bei Miss/Ablauf.
+    """Returns a cached result, or None on a miss/expiry.
 
     Args:
-        cache_key:   Wie von build_cache_key() erzeugt.
-        ttl_seconds: Maximales Alter in Sekunden; ältere Einträge werden
-                     als Miss behandelt (aber nicht automatisch gelöscht).
+        cache_key:   As produced by build_cache_key().
+        ttl_seconds: Maximum age in seconds; older entries are treated
+                     as a miss (but are not automatically deleted).
     """
     with _db_lock:
         try:
@@ -147,11 +148,11 @@ def put_cached_result(
     result_bundle: dict,
     audit_entry: dict,
 ) -> None:
-    """Speichert ein Analyse-Ergebnis im Cache.
+    """Stores an analysis result in the cache.
 
-    §203-Hinweis: Es wird ausschließlich das anonymisierte result_bundle
-    gespeichert. Klartext-Dokumentinhalte dürfen niemals Teil von
-    result_bundle sein (Verantwortung liegt beim Aufrufer).
+    Data-handling note: only the already-anonymized result_bundle is
+    stored. Plaintext document content must never be part of
+    result_bundle (this is the caller's responsibility).
     """
     now = datetime.now(timezone.utc).isoformat()
     try:
@@ -179,7 +180,7 @@ def put_cached_result(
 
 
 def clear_expired(ttl_seconds: int) -> int:
-    """Löscht abgelaufene Cache-Einträge. Gibt die Anzahl gelöschter Rows zurück."""
+    """Deletes expired cache entries. Returns the number of deleted rows."""
     with _db_lock:
         try:
             conn = _get_conn()

@@ -1,8 +1,8 @@
 """
-core/export_format.py – Formatspezifischer Export: PDF (fpdf2) und DOCX (python-docx).
+core/export_format.py – Format-specific export: PDF (fpdf2) and DOCX (python-docx).
 
-Enthält: to_pdf_bytes(), to_docx_bytes(), PDF-Konstanten.
-Text-Rendering liegt in core/export_render.py.
+Contains: to_pdf_bytes(), to_docx_bytes(), PDF constants.
+Text rendering lives in core/export_render.py.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from core.export_render import (
     _parse_lines,
 )
 
-# Nutzbare Breite im Export-PDF über pdf.w - l_margin - r_margin
+# Usable width in the export PDF: pdf.w - l_margin - r_margin
 _PDF_L = 20
 _PDF_R = 20
 _PDF_BULLET_INDENT = 4
@@ -44,39 +44,39 @@ _PDF_BOTTOM = 20
 
 _VERSION = "v0.1 Demo"
 _DISCLAIMER = (
-    "KI-generierter Vorschlag – anwaltliche Prüfung erforderlich. Keine Rechtsberatung."
+    "AI-generated suggestion - expert review required. Not professional advice."
 )
 _FOOTER_NOTE = (
-    "Kein Dokument-Volltext wurde gespeichert. Verarbeitung nach konfigurierten "
-    "Richtlinien; anwaltliche Prüfung erforderlich. LATE " + _VERSION
+    "No full document text was stored. Processing follows the configured "
+    "policy; expert review required. Document Analysis Pipeline " + _VERSION
 )
 
 
 # ---------------------------------------------------------------------------
-# Gemeinsame Hilfsfunktionen
+# Shared helper functions
 # ---------------------------------------------------------------------------
 
 def _latin1(text: str) -> str:
     """
-    Konvertiert Text für fpdf2-Kernfonts (Latin-1).
-    Bekannte Unicode-Sonderzeichen werden durch ASCII-Äquivalente ersetzt.
+    Converts text for fpdf2 core fonts (Latin-1).
+    Known Unicode special characters are replaced with ASCII equivalents.
     """
     _MAP = {
         "\u2013": "-",   # en dash
         "\u2014": "-",   # em dash
         "\u2010": "-",   # hyphen
-        "\u2018": "'",   # linkes Anführungszeichen einfach
-        "\u2019": "'",   # rechtes Anführungszeichen einfach
-        "\u201a": "'",   # einfaches Anführungszeichen unten
-        "\u201c": '"',   # linkes Anführungszeichen doppelt
-        "\u201d": '"',   # rechtes Anführungszeichen doppelt
-        "\u201e": '"',   # deutsches Anführungszeichen unten
-        "\u00ab": '"',   # Guillemets links
-        "\u00bb": '"',   # Guillemets rechts
-        "\u2022": "*",   # Bullet
-        "\u2026": "...", # Ellipsis
+        "\u2018": "'",   # left single quotation mark
+        "\u2019": "'",   # right single quotation mark
+        "\u201a": "'",   # single low-9 quotation mark
+        "\u201c": '"',   # left double quotation mark
+        "\u201d": '"',   # right double quotation mark
+        "\u201e": '"',   # German low double quotation mark
+        "\u00ab": '"',   # left guillemet
+        "\u00bb": '"',   # right guillemet
+        "\u2022": "*",   # bullet
+        "\u2026": "...", # ellipsis
         "\u00b7": "*",   # middle dot
-        "\u20ac": "EUR", # Eurozeichen für Kernfont-Fallback
+        "\u20ac": "EUR", # euro sign, core-font fallback
     }
     for ch, rep in _MAP.items():
         text = text.replace(ch, rep)
@@ -84,13 +84,13 @@ def _latin1(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# PDF Export (fpdf2)
+# PDF export (fpdf2)
 # ---------------------------------------------------------------------------
 
-def to_pdf_bytes(summary: str, audit: dict, title: str = "LATE - Rechtsdokument-Analyse") -> bytes:
-    """Erstellt die Zusammenfassung als PDF und gibt sie als Bytes zurück."""
+def to_pdf_bytes(summary: str, audit: dict, title: str = "Document Analysis Pipeline") -> bytes:
+    """Renders the summary as a PDF and returns it as bytes."""
     if FPDF is None or XPos is None or YPos is None:
-        raise ModuleNotFoundError("fpdf ist nicht installiert; PDF-Export nicht verfügbar.")
+        raise ModuleNotFoundError("fpdf is not installed; PDF export unavailable.")
 
     pdf = FPDF()
     pdf.set_margins(_PDF_L, _PDF_TOP, _PDF_R)
@@ -98,7 +98,7 @@ def to_pdf_bytes(summary: str, audit: dict, title: str = "LATE - Rechtsdokument-
     pdf.add_page()
     usable_width = pdf.w - pdf.l_margin - pdf.r_margin
 
-    # --- Header-Banner ---
+    # --- Header banner ---
     pdf.set_fill_color(28, 57, 112)
     pdf.rect(pdf.l_margin, 20, usable_width, 20, style="F")
     pdf.set_text_color(255, 255, 255)
@@ -115,7 +115,7 @@ def to_pdf_bytes(summary: str, audit: dict, title: str = "LATE - Rechtsdokument-
     pdf.set_text_color(0, 0, 0)
     pdf.ln(6)
 
-    # --- Disclaimer oben ---
+    # --- Disclaimer (top) ---
     pdf.set_font("Helvetica", "I", 9)
     pdf.set_text_color(140, 100, 0)
     pdf.multi_cell(
@@ -132,7 +132,7 @@ def to_pdf_bytes(summary: str, audit: dict, title: str = "LATE - Rechtsdokument-
     pdf.line(pdf.l_margin, pdf.get_y(), pdf.l_margin + usable_width, pdf.get_y())
     pdf.ln(6)
 
-    # --- Zusammenfassung ---
+    # --- Summary ---
     for line_type, text in _parse_lines(summary):
         clean = _latin1(_normalize_pdf_missing_line(text))
         if line_type == "empty":
@@ -184,27 +184,27 @@ def to_pdf_bytes(summary: str, audit: dict, title: str = "LATE - Rechtsdokument-
                 new_y=YPos.NEXT,
             )
 
-    # --- Trennlinie vor Audit ---
+    # --- Divider before audit block ---
     pdf.ln(6)
     pdf.set_draw_color(200, 200, 200)
     pdf.line(pdf.l_margin, pdf.get_y(), pdf.l_margin + usable_width, pdf.get_y())
     pdf.ln(4)
 
-    # --- Audit-Block ---
+    # --- Audit block ---
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(28, 57, 112)
-    pdf.cell(usable_width, 6, "Audit-Block",
+    pdf.cell(usable_width, 6, "Audit block",
              new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_text_color(60, 60, 60)
     pdf.ln(2)
 
     audit_rows = [
-        ("Zeitstempel", audit.get("timestamp", "-")),
-        ("Dokument-Hash (SHA-256)", audit.get("doc_hash", "-")),
-        ("Modell", audit.get("model", "-")),
-        ("Token-Count", _format_token_count(audit)),
-        ("Dokumentklasse", audit.get("doc_class", "-")),
-        ("LATE Version", _VERSION),
+        ("Timestamp", audit.get("timestamp", "-")),
+        ("Document hash (SHA-256)", audit.get("doc_hash", "-")),
+        ("Model", audit.get("model", "-")),
+        ("Token count", _format_token_count(audit)),
+        ("Document class", audit.get("doc_class", "-")),
+        ("Pipeline version", _VERSION),
     ]
     for label, value in audit_rows:
         label_text = _latin1(label + ":")
@@ -240,17 +240,17 @@ def to_pdf_bytes(summary: str, audit: dict, title: str = "LATE - Rechtsdokument-
 
 
 # ---------------------------------------------------------------------------
-# DOCX Export (python-docx)
+# DOCX export (python-docx)
 # ---------------------------------------------------------------------------
 
-def to_docx_bytes(summary: str, audit: dict, title_text: str = "LATE – Rechtsdokument-Analyse") -> bytes:
-    """Erstellt die Zusammenfassung als DOCX und gibt sie als Bytes zurück."""
+def to_docx_bytes(summary: str, audit: dict, title_text: str = "Document Analysis Pipeline") -> bytes:
+    """Renders the summary as a DOCX and returns it as bytes."""
     if Document is None or WD_ALIGN_PARAGRAPH is None or Inches is None or Pt is None or RGBColor is None:
-        raise ModuleNotFoundError("python-docx ist nicht installiert; DOCX-Export nicht verfügbar.")
+        raise ModuleNotFoundError("python-docx is not installed; DOCX export unavailable.")
 
     doc = Document()
 
-    # Seitenränder
+    # Page margins
     for section in doc.sections:
         section.top_margin = Inches(1.0)
         section.bottom_margin = Inches(1.0)
@@ -277,9 +277,9 @@ def to_docx_bytes(summary: str, audit: dict, title_text: str = "LATE – Rechtsd
     disc_run.font.size = Pt(9)
     disc_run.font.color.rgb = RGBColor(140, 100, 0)
 
-    doc.add_paragraph()  # Leerzeile
+    doc.add_paragraph()  # blank line
 
-    # --- Zusammenfassung ---
+    # --- Summary ---
     for line_type, text in _parse_lines(summary):
         normalized = _normalize_display_text(text)
         if line_type == "empty":
@@ -304,18 +304,18 @@ def to_docx_bytes(summary: str, audit: dict, title_text: str = "LATE – Rechtsd
 
     doc.add_paragraph()
 
-    # --- Audit-Block ---
-    audit_heading = doc.add_heading("Audit-Block", level=2)
+    # --- Audit block ---
+    audit_heading = doc.add_heading("Audit block", level=2)
     for run in audit_heading.runs:
         run.font.color.rgb = RGBColor(28, 57, 112)
 
     audit_rows = [
-        ("Zeitstempel", audit.get("timestamp", "-")),
-        ("Dokument-Hash (SHA-256)", audit.get("doc_hash", "-")),
-        ("Modell", audit.get("model", "-")),
-        ("Token-Count", _format_token_count(audit)),
-        ("Dokumentklasse", audit.get("doc_class", "-")),
-        ("LATE Version", _VERSION),
+        ("Timestamp", audit.get("timestamp", "-")),
+        ("Document hash (SHA-256)", audit.get("doc_hash", "-")),
+        ("Model", audit.get("model", "-")),
+        ("Token count", _format_token_count(audit)),
+        ("Document class", audit.get("doc_class", "-")),
+        ("Pipeline version", _VERSION),
     ]
 
     table = doc.add_table(rows=len(audit_rows), cols=2)

@@ -1,6 +1,6 @@
 """
-prompts.py – System-Prompts je Dokumentklasse
-Strukturiertes Output-Format gemäß CLAUDE.md.
+prompts.py - System prompts per document class.
+Structured output format shared across all document classes (see _BASE_FORMAT).
 """
 
 _BASE_FORMAT = """
@@ -163,7 +163,7 @@ SYSTEM_PROMPTS: dict[str, str] = {
 DOC_CLASSES = list(SYSTEM_PROMPTS.keys())
 PROMPT_VERSION = "2026-02-21-structured-v5"
 
-# Klassenspezifische Hinweise für _document_analysis_prompt (ohne _BASE_FORMAT, nur Fokus-Instruktionen).
+# Class-specific hints for _document_analysis_prompt (without _BASE_FORMAT, focus instructions only).
 DOC_CLASS_HINTS: dict[str, str] = {
     "Vertrag": (
         "facts muss mindestens enthalten (soweit erkennbar): Vertragsparteien, Vertragsgegenstand, "

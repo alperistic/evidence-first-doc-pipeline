@@ -1,5 +1,5 @@
 """
-segmenter.py - Robuste Multi-Dokument-Segmentierung auf Seitenebene.
+segmenter.py - Robust multi-document segmentation at page level.
 """
 
 from __future__ import annotations
@@ -97,7 +97,7 @@ _PROTECTED_SEGMENT_LINE_RE = re.compile(
 
 def _segment_debug_enabled() -> bool:
     import os
-    return str(os.getenv("LATE_SEGMENT_DEBUG", "0")).strip() == "1"
+    return str(os.getenv("DOCPIPE_SEGMENT_DEBUG", "0")).strip() == "1"
 
 
 def _segment_debug(message: str) -> None:
@@ -806,8 +806,8 @@ def _segment_pages_from_document_markers(normalized_pages: list[dict[str, Any]])
         if not segment_pages_slice:
             continue
 
-        # Bereinigt Boilerplate/Fußzeilen pro erkanntem Dokument und verteilt
-        # den bereinigten Text wieder auf Seitenbasis.
+        # Strips boilerplate/footers per detected document and redistributes
+        # the cleaned text back across pages.
         cleaned_doc_blocks = segment_by_document(_stitch_pages_with_tags(segment_pages_slice))
         cleaned_doc = cleaned_doc_blocks[0] if cleaned_doc_blocks else _stitch_pages_with_tags(segment_pages_slice)
         page_text_map = _page_text_map_from_tagged_text(cleaned_doc)
@@ -984,14 +984,14 @@ def _candidate_boundaries_from_diagnostics(
         cooldown_override = bool(strong_hits & _HARD_COOLDOWN_OVERRIDE_MARKERS)
         title_meta = bool(item.get("title_meta", False))
 
-        # Anlage-Seiten sind Bestandteil des übergeordneten Dokuments.
+        # Attachment pages are part of the parent document.
         if bool(item.get("is_attachment", False)):
             prev_strong_hits = strong_hits
             prev_doc_type = curr_doc_type
             continue
 
-        # Zahlungsdetails/Rechnungsempfänger-Seiten innerhalb eines Vertrags sind
-        # Bestandteil des übergeordneten Vertrags – kein Boundary erzeugen.
+        # Payment-detail/billing-recipient pages inside a contract are part of
+        # the parent contract - do not create a boundary here.
         if (
             bool(item.get("is_contract_continuation", False))
             and prev_doc_type in _VERTRAG_DOC_TYPES
@@ -1118,7 +1118,7 @@ def _merge_micro_segments(
                 continue
             if bool(segment.get("boundary_strong_marker", False)):
                 continue
-            # Ausreichender Boundary-Score oder erkannter DocType → Segment behalten
+            # Sufficient boundary score or a recognized doc type -> keep the segment
             bs = float(segment.get("boundary_score") or 0.0)
             dt = str(segment.get("doc_type_guess", "") or "")
             if bs >= threshold or (dt and dt not in ("Unklar", "")):
@@ -1262,8 +1262,8 @@ def build_segment_chunks(
     max_chars_per_chunk: int | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Baut Segment-Chunks rein auf Zeichenbudget-Basis.
-    Ein Segment wird vollständig in einem LLM-Call gesendet, solange es <= 25.000 Zeichen bleibt.
+    Builds segment chunks purely on a character-budget basis.
+    A segment is sent in full in a single LLM call as long as it stays <= 25,000 characters.
     """
     if not pages:
         return []
@@ -1334,7 +1334,7 @@ def build_segment_chunks(
 
 def merge_structured_payloads(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     """
-    Merged strukturierte Chunk-Analysen zu einem Segment-Resultat.
+    Merges structured chunk analyses into a single segment result.
     """
     if not payloads:
         return {
@@ -1460,8 +1460,8 @@ def segment_pages(
     boundary_cooldown_pages: int | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Segmentiert Seiten strikt auf Dokumentebene.
-    Ein Segment entspricht genau einem logischen Dokument-Block.
+    Segments pages strictly at the document level.
+    Each segment corresponds to exactly one logical document block.
 
     Input: pages = [{"page_number": int, "text": str}, ...]
     Output: segments = [{

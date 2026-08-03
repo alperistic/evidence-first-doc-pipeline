@@ -1,7 +1,7 @@
-"""core/utils.py – Generische Hilfsfunktionen für die LATE-Pipeline.
+"""core/utils.py – Generic helper functions for the document-analysis pipeline.
 
-Keine Streamlit-Importe. Keine Pipeline-Orchestrierung.
-Wird von core/pipeline.py, app.py und ui/components.py importiert.
+No Streamlit imports. No pipeline orchestration.
+Imported by core/pipeline.py, app.py, and ui/components.py.
 """
 
 import os
@@ -11,13 +11,13 @@ from typing import Any
 from core.models import clean_snippet
 
 # ---------------------------------------------------------------------------
-# Regex-Konstanten
+# Regex constants
 # ---------------------------------------------------------------------------
 _TAGGED_PAGE_RE = re.compile(r"\[\[PAGE:(\d+)\]\]")
 _DOC_TYPE_HINT_RE = re.compile(r"(?:^|\|)\s*typ\s*:\s*([^|\n]+)", flags=re.IGNORECASE)
 
 # ---------------------------------------------------------------------------
-# Hilfsfunktionen
+# Helper functions
 # ---------------------------------------------------------------------------
 
 def _page_no(page: dict) -> int:

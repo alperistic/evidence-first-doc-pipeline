@@ -1,10 +1,10 @@
 """
-redaction.py - fail-closed Redaction-Pipeline für LLM-Aufrufe.
+redaction.py - fail-closed redaction pipeline for LLM calls.
 
-Sicherheitsprinzipien:
-- LLM erhält ausschließlich redacted_text (Platzhalter)
-- Mapping bleibt lokal (placeholder -> original)
-- Findings/Stats enthalten keine Klartextwerte
+Security principles:
+- The LLM receives only redacted_text (placeholders)
+- The mapping stays local (placeholder -> original)
+- Findings/stats never contain plaintext values
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import re
 from typing import Any
 
 # ---------------------------------------------------------------------------
-# Re-Exports aus governance.redaction_patterns (Fassade für Abwärtskompatibilität)
+# Re-exports from governance.redaction_patterns (facade for backward compatibility)
 # ---------------------------------------------------------------------------
 from governance.redaction_patterns import (  # noqa: F401
     _WORD_CHARS,
@@ -70,7 +70,7 @@ from governance.redaction_patterns import (  # noqa: F401
 )
 
 # ---------------------------------------------------------------------------
-# Re-Exports aus governance.pseudonymizer (Fassade für Abwärtskompatibilität)
+# Re-exports from governance.pseudonymizer (facade for backward compatibility)
 # ---------------------------------------------------------------------------
 from governance.pseudonymizer import (  # noqa: F401
     _normalize_person_key,
@@ -96,7 +96,7 @@ class _ExternalMaskState:
 @dataclass
 class RedactionContext:
     redacted_text: str
-    mapping: dict[str, str]  # placeholder -> original (nur lokal)
+    mapping: dict[str, str]  # placeholder -> original (local only)
     stats: dict[str, Any]
 
 
@@ -218,12 +218,12 @@ def apply_dictionary_redaction(
     threshold: int,
 ) -> tuple[str, dict[str, str], dict[str, Any]]:
     """
-    Maskiert zusätzliche fall-spezifische Entities deterministisch als [DICT_n].
+    Deterministically masks additional case-specific entities as [DICT_n].
 
-    Rückgabe:
+    Returns:
     - text2
     - mapping_add: placeholder -> original
-    - stats_add: ausschließlich mask-only Metadaten
+    - stats_add: mask-only metadata exclusively
     """
     if not text:
         return "", {}, {"matched_entities_count": 0, "matched_masks": [], "mask_counts": {}, "mask_types": {}}
@@ -367,7 +367,7 @@ def _apply_regex_redaction(text: str) -> tuple[str, dict[str, str], dict[str, An
                     return match.group(0)
                 if not _is_addr_candidate(source):
                     return match.group(0)
-            # FIX 5 (P2): Optionaler Validator – z.B. für BIC-Ländercodeprüfung.
+            # FIX 5 (P2): Optional validator – e.g. for BIC country-code verification.
             if rule.validate is not None and not rule.validate(source):
                 return match.group(0)
 
@@ -406,10 +406,10 @@ def _policy_get(policy: Any, key: str, default: Any) -> Any:
 
 def prepare_for_llm(original_text: str, policy: Any) -> RedactionContext:
     """
-    Zentrale fail-closed Vorbereitung für LLM.
+    Central fail-closed preparation step before sending text to the LLM.
 
-    policy kann dict oder Objekt sein. Relevante Keys/Attribute:
-    - dictionary_entities: list[str] | str (newline-separiert)
+    policy can be a dict or an object. Relevant keys/attributes:
+    - dictionary_entities: list[str] | str (newline-separated)
     - dictionary_fuzzy: bool (default False)
     - dictionary_threshold: int (default 92)
     - pseudonymize_people: bool (default True)
@@ -500,18 +500,18 @@ def prepare_for_llm(original_text: str, policy: Any) -> RedactionContext:
         for kind, count in (company_stats.get("mask_types") or {}).items():
             mask_types[kind] = int(mask_types.get(kind, 0)) + int(count)
 
-    # FIX 4 (P1): Second Pass – bereinigt verbleibende Rechtsform-Suffixe
-    # ("& Co. KG", "& Co. KGaA") die nach einem Platzhalter stehen.
-    # Tritt auf wenn ein Unternehmensname durch eine frühere Regel nur teilweise
-    # erfasst wurde (z.B. nur "GmbH" ohne den "& Co. KGaA"-Suffix).
+    # FIX 4 (P1): Second pass – cleans up remaining legal-form suffixes
+    # ("& Co. KG", "& Co. KGaA") that sit right after a placeholder.
+    # Happens when a company name was only partially captured by an earlier
+    # rule (e.g. only "GmbH" without the "& Co. KGaA" suffix).
     out = _ORPHAN_COMPANY_SUFFIX_RE.sub(r"\1", out)
 
-    # FIX 6 (P2): Pipeline-weiter Nachname-Second-Pass – stellt sicher dass
-    # alleinstehende Nachnamen auch dann maskiert werden, wenn der vollständige
-    # Name durch einen früheren Pass (_apply_regex_redaction → PERSON_N) erfasst
-    # wurde und pseudonymize_people() ihn daher nicht mehr sehen konnte.
-    # Scannt das kombinierte Mapping nach PERSON/PARTEI-Platzhaltern, extrahiert
-    # den Nachnamen und ersetzt verbleibende Klartext-Vorkommen.
+    # FIX 6 (P2): Pipeline-wide surname second pass – ensures standalone
+    # surnames get masked even when the full name was captured by an earlier
+    # pass (_apply_regex_redaction → PERSON_N) and pseudonymize_people()
+    # therefore never saw it. Scans the combined mapping for PERSON/PARTEI
+    # placeholders, extracts the surname, and replaces remaining plaintext
+    # occurrences.
     _person_mask_types_fix6 = {"PERSON", "PARTEI"}
     _surname_to_ph: dict[str, str] = {}
     for _ph, _orig in mapping.items():
@@ -550,7 +550,7 @@ def prepare_for_llm(original_text: str, policy: Any) -> RedactionContext:
 
 def restore_from_llm(text: str, mapping: dict[str, str]) -> str:
     """
-    Lokale Re-Identification: Platzhalter -> Original.
+    Local re-identification: placeholder -> original.
     """
     out = str(text or "")
     if not out or not mapping:
@@ -649,11 +649,11 @@ def _mask_external_line(line: str, state: _ExternalMaskState) -> str:
 
 def apply_strict_external_mask(payload: Any) -> Any:
     """
-    Zusätzliche Härtung für externe Ausgabe:
-    - Organisationsnamen in Parteien/Metadaten-Zeilen maskieren
-    - komplette Anschriftzeilen maskieren
-    - Quelle-Zeilen entfernen (können Adressfragmente neben Platzhaltern enthalten)
-    - Klarnamen und Hausnummern direkt nach Platzhaltern entfernen
+    Additional hardening for external output:
+    - Masks organization names in party/metadata lines
+    - Masks complete address lines
+    - Removes source lines (may contain address fragments next to placeholders)
+    - Removes plaintext names and house numbers directly following placeholders
     """
     state = _ExternalMaskState()
 
@@ -662,7 +662,7 @@ def apply_strict_external_mask(payload: Any) -> Any:
             lines = []
             for line in value.splitlines():
                 if _EXTERNAL_SOURCE_LINE_RE.match(line):
-                    continue  # Quelle-Zeilen im external-mode entfernen
+                    continue  # Remove source lines in external mode
                 lines.append(_mask_external_line(line, state))
             result = "\n".join(lines)
             result = _EXT_NAME_AFTER_PLACEHOLDER_RE.sub(r'\1', result)
@@ -678,33 +678,36 @@ def apply_strict_external_mask(payload: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Post-Redaction PII-Validator (fail-closed für Mandantenexport)
+# Post-redaction PII validator (fail-closed for client export)
 # ---------------------------------------------------------------------------
 
 
 def _strip_placeholders(text: str) -> str:
-    """Entfernt alle bekannten Redaction-Platzhalter vor PII-Validierung.
-    Verhindert False Positives durch Zahlenfolgen in Platzhaltern."""
+    """Removes all known redaction placeholders before PII validation.
+    Prevents false positives from digit sequences inside placeholders."""
     return _VALIDATOR_PLACEHOLDER_PATTERN.sub("", text)
 
 
 class RedactionLeakError(Exception):
-    """Wird geworfen wenn nach Redaction noch PII erkannt wird."""
+    """Raised when PII is still detected after redaction."""
 
     def __init__(self, leak_count: int):
         self.leak_count = leak_count
         super().__init__(
+            # NOTE: this exact wording ("PII-Treffer" / "Export gesperrt") is
+            # asserted by tests/test_redaction_fail_closed.py — kept as-is
+            # (data contract), not translated like surrounding comments/docstrings.
             f"Redaction unvollständig: {leak_count} mögliche PII-Treffer. "
             f"Export gesperrt."
         )
 
 
 def validate_mandantenexport(text: str) -> None:
-    """Prüft ob Mandantenexport noch PII enthält.
-    Wirft RedactionLeakError wenn ja.
-    WICHTIG: Leak-Inhalte werden nie geloggt (kein PII in Logs)."""
-    # Platzhalter entfernen vor Check (verhindert False Positives durch
-    # Zahlenfolgen in [ADDR_x], [BIC_x] etc.)
+    """Checks whether a client export still contains PII.
+    Raises RedactionLeakError if it does.
+    IMPORTANT: leak contents are never logged (no PII in logs)."""
+    # Strip placeholders before the check (prevents false positives from
+    # digit sequences in [ADDR_x], [BIC_x], etc.)
     clean_text = _strip_placeholders(text)
     leak_count = 0
     for pattern, name in zip(_POST_REDACTION_PII_PATTERNS, _POST_REDACTION_PII_PATTERN_NAMES):
@@ -721,7 +724,7 @@ def redact(
     threshold: int = 92,
     validate: bool = False,
 ) -> str:
-    """Kompatibilitäts-API: gibt redacted text zurück (ohne Re-Identification)."""
+    """Compatibility API: returns redacted text (without re-identification)."""
     ctx = prepare_for_llm(
         text,
         {
@@ -745,10 +748,10 @@ def redact_with_preview(
     validate: bool = False,
 ) -> tuple[str, list[dict], dict]:
     """
-    Kompatibilitäts-API mit mask-only Findings (kein Klartext).
+    Compatibility API with mask-only findings (no plaintext).
 
-    Rückgabe: (anonymisierter_text, findings, dictionary_report)
-    findings: Liste von {"replacement": "[MASK_x]", "placeholder": "[MASK_x]"}
+    Returns: (anonymized_text, findings, dictionary_report)
+    findings: list of {"replacement": "[MASK_x]", "placeholder": "[MASK_x]"}
     """
     ctx = prepare_for_llm(
         text,

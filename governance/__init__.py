@@ -1,10 +1,10 @@
 """
-governance – LexGuard Compliance Layer.
+governance – LexGuard governance layer.
 
-Single Source of Truth für Redaction, Audit, Policy und Dokumentklassen-Logik.
-Alle anderen Module importieren aus diesem Paket.
+Single source of truth for redaction, audit, policy, and document-class logic.
+All other modules import from this package.
 
-Öffentliche API:
+Public API:
   from governance.redaction import prepare_for_llm, restore_from_llm, ...
   from governance.audit import log_request, get_recent_logs
   from governance.policy import load_policy, LoadedPolicy, PolicyConfig

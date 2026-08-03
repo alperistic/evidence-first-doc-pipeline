@@ -225,10 +225,9 @@ class SegmenterTests(unittest.TestCase):
         )
         max_cap = 25
         env = {
-            "LATE_SEGMENT_MAX_SEGMENTS": str(max_cap),
-            "LATE_SEGMENT_MIN_PAGES": "2",
-            "LATE_SEGMENT_BOUNDARY_COOLDOWN_PAGES": "0",
-            "LATE_SEGMENT_ADAPTIVE_THRESHOLD": "1",
+            "DOCPIPE_SEGMENT_MAX_SEGMENTS": str(max_cap),
+            "DOCPIPE_SEGMENT_BOUNDARY_COOLDOWN_PAGES": "0",
+            "DOCPIPE_SEGMENT_ADAPTIVE_THRESHOLD": "1",
         }
         with patch.dict("os.environ", env, clear=False):
             segments = segment_pages(pages)
@@ -248,7 +247,7 @@ class SegmenterTests(unittest.TestCase):
                 "Abschluss und Fristnotizen",
             ]
         )
-        with patch.dict("os.environ", {"LATE_SEGMENT_ADAPTIVE_THRESHOLD": "1"}, clear=False):
+        with patch.dict("os.environ", {"DOCPIPE_SEGMENT_ADAPTIVE_THRESHOLD": "1"}, clear=False):
             segments = segment_pages(pages)
 
         self.assertEqual(len(segments), 1)
@@ -265,12 +264,10 @@ class SegmenterTests(unittest.TestCase):
                 for idx in range(1, 13)
             ]
         )
-        min_pages = 3
         env = {
-            "LATE_SEGMENT_MIN_PAGES": str(min_pages),
-            "LATE_SEGMENT_MAX_SEGMENTS": "99",
-            "LATE_SEGMENT_BOUNDARY_COOLDOWN_PAGES": "0",
-            "LATE_SEGMENT_ADAPTIVE_THRESHOLD": "0",
+            "DOCPIPE_SEGMENT_MAX_SEGMENTS": "99",
+            "DOCPIPE_SEGMENT_BOUNDARY_COOLDOWN_PAGES": "0",
+            "DOCPIPE_SEGMENT_ADAPTIVE_THRESHOLD": "0",
         }
         with patch.dict("os.environ", env, clear=False):
             segments = segment_pages(pages)
@@ -292,10 +289,9 @@ class SegmenterTests(unittest.TestCase):
             ]
         )
         env = {
-            "LATE_SEGMENT_MAX_SEGMENTS": "15",
-            "LATE_SEGMENT_MIN_PAGES": "2",
-            "LATE_SEGMENT_BOUNDARY_COOLDOWN_PAGES": "1",
-            "LATE_SEGMENT_ADAPTIVE_THRESHOLD": "1",
+            "DOCPIPE_SEGMENT_MAX_SEGMENTS": "15",
+            "DOCPIPE_SEGMENT_BOUNDARY_COOLDOWN_PAGES": "1",
+            "DOCPIPE_SEGMENT_ADAPTIVE_THRESHOLD": "1",
         }
         with patch.dict("os.environ", env, clear=False):
             segments = segment_pages(pages)
@@ -332,7 +328,7 @@ class SegmenterTests(unittest.TestCase):
         text = _fixture_text("kanzlei_bundle_marker.txt")
 
         with patch("builtins.print") as print_mock:
-            with patch.dict("os.environ", {"LATE_SEGMENT_DEBUG": "0"}, clear=False):
+            with patch.dict("os.environ", {"DOCPIPE_SEGMENT_DEBUG": "0"}, clear=False):
                 segment_by_document(text)
         debug_calls_disabled = [
             call for call in print_mock.call_args_list if call.args and "[SEGMENT_DEBUG]" in str(call.args[0])
@@ -340,7 +336,7 @@ class SegmenterTests(unittest.TestCase):
         self.assertEqual(debug_calls_disabled, [])
 
         with patch("builtins.print") as print_mock:
-            with patch.dict("os.environ", {"LATE_SEGMENT_DEBUG": "1"}, clear=False):
+            with patch.dict("os.environ", {"DOCPIPE_SEGMENT_DEBUG": "1"}, clear=False):
                 segment_by_document(text)
         debug_calls_enabled = [
             call for call in print_mock.call_args_list if call.args and "[SEGMENT_DEBUG]" in str(call.args[0])
@@ -492,8 +488,8 @@ class PR9RahmenvertragSegmentierungTests(unittest.TestCase):
             })
 
         env = {
-            "LATE_SEGMENT_ADAPTIVE_THRESHOLD": "1",
-            "LATE_SEGMENT_BOUNDARY_COOLDOWN_PAGES": "2",
+            "DOCPIPE_SEGMENT_ADAPTIVE_THRESHOLD": "1",
+            "DOCPIPE_SEGMENT_BOUNDARY_COOLDOWN_PAGES": "2",
         }
         with patch.dict("os.environ", env, clear=False):
             segments = segment_pages(pages)
@@ -589,8 +585,8 @@ class PR9RahmenvertragSegmentierungTests(unittest.TestCase):
         ])
 
         env = {
-            "LATE_SEGMENT_ADAPTIVE_THRESHOLD": "0",
-            "LATE_SEGMENT_BOUNDARY_COOLDOWN_PAGES": "0",
+            "DOCPIPE_SEGMENT_ADAPTIVE_THRESHOLD": "0",
+            "DOCPIPE_SEGMENT_BOUNDARY_COOLDOWN_PAGES": "0",
         }
         with patch.dict("os.environ", env, clear=False):
             segments = segment_pages(pages)

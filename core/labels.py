@@ -1,8 +1,7 @@
-"""core/labels.py – Gemeinsame Label-Logik für Summary- und Export-Rendering.
+"""core/labels.py – Shared label logic for summary and export rendering.
 
-Single Source of Truth für Label-Funktionen, die sowohl in
-core/export_render.py (Text-Export) als auch ui/components.py (Streamlit-UI)
-benötigt werden.
+Single source of truth for label functions needed both in
+core/export_render.py (text export) and ui/components.py (Streamlit UI).
 """
 
 from __future__ import annotations
@@ -77,8 +76,8 @@ BETRAG_KONTEXT_KEYWORDS: dict[str, list[str]] = {
     ],
 }
 
-# Zeitraum-Erkennungsmuster für den Gehalt-Gate:
-# Gehalt-Beträge werden nur klassifiziert wenn ein Zeitraum im Kontext steht.
+# Time-period detection pattern for the salary gate:
+# Salary amounts are only classified when a time period is present in the context.
 _ZEITRAUM_RE = re.compile(
     r"\b(?:"
     r"januar|februar|m[äa]rz|april|mai|juni|juli|august|september|oktober|november|dezember"
@@ -97,14 +96,14 @@ _ZEITRAUM_RE = re.compile(
 
 
 def _has_zeitraum(context: str) -> bool:
-    """Prüft ob der Kontext einen Zeitraum-Hinweis enthält."""
+    """Checks whether the context contains a time-period indicator."""
     return bool(_ZEITRAUM_RE.search(context))
 
 
 def extract_context_lines(all_lines: list[str], line_idx: int, window: int = 2) -> str:
-    """Gibt ±window Zeilen um line_idx als zusammengefügten String zurück.
+    """Returns the ±window lines around line_idx joined into a single string.
 
-    Genutzt in evidence.py für kontextbasiertes Betragsmapping (±2 Zeilen).
+    Used in evidence.py for context-based amount mapping (±2 lines).
     """
     start = max(0, line_idx - window)
     end = min(len(all_lines), line_idx + window + 1)
@@ -113,27 +112,27 @@ def extract_context_lines(all_lines: list[str], line_idx: int, window: int = 2) 
 
 
 def klassifiziere_betrag_mit_kontext(line: str, kontext_lines: str) -> "BetragKlassifikation":
-    """Zweistufiges Betragsmapping mit ±2-Zeilen-Fallback.
+    """Two-stage amount mapping with a ±2-line fallback.
 
-    Stufe 1: Einzelzeile (klassifiziere_betrag_mit_confidence).
-             Bei Treffer (confidence 1.0) oder Ambiguität → direkte Rückgabe.
-    Stufe 2: Kein Treffer auf Einzelzeile → ±2-Zeilen-Kontext mit
-             Proximity-Suche (das Keyword am nächsten zur Zeilenmitte gewinnt).
-             So werden Beträge auf eigenen Zeilen korrekt typisiert.
+    Stage 1: single line (klassifiziere_betrag_mit_confidence).
+             On a hit (confidence 1.0) or ambiguity → return directly.
+    Stage 2: no hit on the single line → ±2-line context with a
+             proximity search (the keyword closest to the line's midpoint wins).
+             This correctly types amounts that sit on their own line.
 
-    Gehalt-Gate gilt in beiden Stufen.
+    The salary gate applies at both stages.
     """
-    # Stufe 1: Einzelzeile hat Vorrang (verhindert Bleeding aus Nachbarzeilen)
+    # Stage 1: the single line takes precedence (prevents bleed from neighboring lines)
     einzel = klassifiziere_betrag_mit_confidence(line)
     if einzel.confidence >= 1.0:
         return einzel
     if einzel.is_ambiguous:
         return einzel
-    # Stufe 2: Kein Keyword auf Einzelzeile → Proximity-Suche in ±2 Zeilen
+    # Stage 2: no keyword on the single line → proximity search across ±2 lines
     feld = klassifiziere_betrag(kontext_lines)
     if feld == "betrag":
         return BetragKlassifikation(feldname="betrag", confidence=0.0, matched_keyword=None)
-    # Gehalt-Gate: auch im erweiterten Kontext Zeitraum prüfen
+    # Salary gate: also check for a time period in the extended context
     if feld == "gehalt" and not _has_zeitraum(kontext_lines):
         return BetragKlassifikation(
             feldname="betrag", confidence=0.0, matched_keyword=None, is_ambiguous=True
@@ -142,13 +141,13 @@ def klassifiziere_betrag_mit_kontext(line: str, kontext_lines: str) -> "BetragKl
 
 
 def klassifiziere_betrag(kontext: str) -> str:
-    """Bestimmt Feldtyp anhand des umliegenden Textkontexts.
+    """Determines the field type from the surrounding text context.
 
-    Gibt den Feldnamen zurück oder 'betrag' als Fallback.
+    Returns the field name, or 'betrag' as a fallback.
 
-    Wenn mehrere Kategorien im Kontext-Fenster matchen, wird diejenige
-    gewählt, deren Keyword-Match am nächsten zur Fenstermitte liegt
-    (= am nächsten zum Betrag selbst).
+    If multiple categories match within the context window, the one
+    whose keyword match is closest to the window's midpoint wins
+    (= closest to the amount itself).
     """
     kontext_lower = kontext.lower()
     mitte = len(kontext_lower) // 2
@@ -157,8 +156,8 @@ def klassifiziere_betrag(kontext: str) -> str:
 
     for feldname, keywords in BETRAG_KONTEXT_KEYWORDS.items():
         for kw in keywords:
-            # Wortgrenze: Keyword darf nicht Teil eines längeren Wortes sein
-            # (z.B. "monatsmiete" soll nicht in "monatsmieten" matchen)
+            # Word boundary: the keyword must not be part of a longer word
+            # (e.g. "monatsmiete" must not match inside "monatsmieten")
             for m in re.finditer(rf"\b{re.escape(kw)}\b", kontext_lower):
                 pos = m.start()
                 kw_mitte = pos + len(kw) // 2
@@ -172,19 +171,19 @@ def klassifiziere_betrag(kontext: str) -> str:
 
 @dataclass
 class BetragKlassifikation:
-    feldname: str        # z.B. "kaution", "rueckstand", "miete"
+    feldname: str        # e.g. "kaution", "rueckstand", "miete"
     confidence: float    # 0.0 – 1.0
-    matched_keyword: str | None  # welches Keyword hat getroffen
-    is_ambiguous: bool = False   # True wenn Treffer in 2+ Kategorien
+    matched_keyword: str | None  # which keyword matched
+    is_ambiguous: bool = False   # True if matched in 2+ categories
 
 
 def klassifiziere_betrag_mit_confidence(kontext: str) -> BetragKlassifikation:
-    """Klassifiziert Betrag mit Confidence-Score.
+    """Classifies an amount with a confidence score.
 
-    Confidence-Logik:
-    - 1 eindeutiger Treffer in genau 1 Kategorie → confidence 1.0
-    - Treffer in 2+ Kategorien → confidence 0.0, is_ambiguous=True
-    - Kein Treffer → feldname="betrag", confidence 0.0, is_ambiguous=False
+    Confidence logic:
+    - 1 unambiguous match in exactly 1 category → confidence 1.0
+    - Match in 2+ categories → confidence 0.0, is_ambiguous=True
+    - No match → feldname="betrag", confidence 0.0, is_ambiguous=False
     """
     kontext_lower = kontext.lower()
     treffer: dict[str, str] = {}  # feldname → matched_keyword
@@ -197,7 +196,7 @@ def klassifiziere_betrag_mit_confidence(kontext: str) -> BetragKlassifikation:
 
     if len(treffer) == 1:
         feldname, kw = next(iter(treffer.items()))
-        # Gehalt-Gate: nur ausgeben wenn Zeitraum im Kontext vorhanden
+        # Salary gate: only emit when a time period is present in the context
         if feldname == "gehalt" and not _has_zeitraum(kontext_lower):
             return BetragKlassifikation(
                 feldname="betrag", confidence=0.0, matched_keyword=None, is_ambiguous=True
@@ -210,37 +209,38 @@ def klassifiziere_betrag_mit_confidence(kontext: str) -> BetragKlassifikation:
 
 
 def _amount_label_from_context(context: str) -> str | None:
-    """Leitet ein kontextspezifisches Label aus dem unmittelbaren Belegtext ab.
+    """Derives a context-specific label from the immediate evidence text.
 
-    Gibt None zurück wenn kein spezifischer Betragsbegriff erkennbar ist —
-    dann soll der Betrag in der Ausgabe unterdrückt werden statt ein
-    generisches Label ("Betrag") zu zeigen.
+    Returns None if no specific amount term is recognizable — in that
+    case the amount should be suppressed from the output rather than
+    shown under a generic label ("Betrag").
 
-    Reihenfolge: spezifischere Begriffe haben Vorrang vor allgemeineren.
-    Vertragsstrafe/Verstoß hat Vorrang vor Gehalt (PR13 P3).
+    Order: more specific terms take precedence over more general ones.
+    Contract penalty/breach takes precedence over salary (PR13 P3).
     """
     ctx = str(context or "").lower()
-    # Kaufpreis / M&A
+    # Purchase price / M&A
     if "basiskaufpreis" in ctx:
         return "Basiskaufpreis"
     if "kaufpreis" in ctx:
         return "Kaufpreis"
     if "earnout" in ctx:
         return "Earnout"
-    # Abfindung / Streitwert
+    # Severance pay / amount in dispute
     if "abfindung" in ctx:
         return "Abfindung"
     if "streitwert" in ctx:
         return "Streitwert"
-    # Monatsmiete: NUR "Gesamte monatliche Zahllast" / "monatliche Zahllast" / "Gesamtmiete"
+    # Monthly rent: ONLY "Gesamte monatliche Zahllast" / "monatliche Zahllast" / "Gesamtmiete"
     if "monatliche zahllast" in ctx or "monatl. zahllast" in ctx or "gesamtmiete" in ctx:
         return "Monatsmiete"
     if "fällig jeweils am" in ctx or "faellig jeweils am" in ctx or "fällig jeweils zum" in ctx:
         return "Monatsmiete"
-    # Kaution / Mietsicherheit — vor Rückstand-Check (Kaution hat Vorrang auch wenn
-    # "Rückstand" im selben Satz steht, z.B. "Kaution verwerten wegen Mietrückstand")
-    # Ausnahme: IBAN/BIC-Kontext → Zahlungsaufforderung, kein Kaution-Hinterlegungsbeleg.
-    # Abdeckt: roher Text ("iban:", "bic:"), redacted Placeholder ("[iban_1]", "[bic_1]").
+    # Security deposit / rental security — before the arrears check (deposit takes
+    # precedence even if "Rückstand" appears in the same sentence, e.g.
+    # "Kaution verwerten wegen Mietrückstand")
+    # Exception: IBAN/BIC context → payment demand, not a deposit receipt.
+    # Covers: raw text ("iban:", "bic:"), redacted placeholder ("[iban_1]", "[bic_1]").
     _has_bank = (
         "iban" in ctx
         or "[iban_" in ctx
@@ -249,14 +249,14 @@ def _amount_label_from_context(context: str) -> str | None:
     )
     if ("kaution" in ctx or "mietsicherheit" in ctx) and not _has_bank:
         return "Kaution"
-    # Mietrückstand
+    # Rent arrears
     if "rückstand" in ctx or "rueckstand" in ctx:
         return "Rückstand"
-    # Nebenkosten / Betriebskosten — proximity-basierte Unterscheidung von Gesamtmiete.
-    # Aufgerufene Signatur in Produktion: context = f"{quote} {value}".
-    # Wenn value an letzter Stelle angehängt wurde, erscheint der letzte EUR-Betrag im
-    # String zweimal. Wir nutzen dieses Signal um zwischen "appended value" (proximity-
-    # Algorithmus) und "only text" (alter Positions-Algorithmus) zu unterscheiden.
+    # Ancillary/operating costs — proximity-based disambiguation from total rent.
+    # Signature as called in production: context = f"{quote} {value}".
+    # When value was appended at the end, the last EUR amount appears twice in the
+    # string. We use that signal to distinguish "appended value" (proximity
+    # algorithm) from "only text" (old position-based algorithm).
     if "nebenkosten" in ctx or "betriebskosten" in ctx:
         if "insgesamt" in ctx:
             _all_amts = list(re.finditer(r'eur\s*\d[\d.,]+|\d[\d.]+,\d{2}', ctx))
@@ -265,8 +265,8 @@ def _amount_label_from_context(context: str) -> str | None:
                 _first_pos = ctx.find(_last_str)
                 _last_pos = ctx.rfind(_last_str)
                 if _first_pos != _last_pos:
-                    # Value wurde angehängt (zweites Vorkommen = appended value) →
-                    # proximity-Algorithmus: Keyword nächstgelegen vor erstem Vorkommen gewinnt.
+                    # Value was appended (second occurrence = appended value) →
+                    # proximity algorithm: closest keyword before the first occurrence wins.
                     _best_gesamt = max(
                         (ctx.rfind(k, 0, _first_pos) for k in ("insgesamt", "gesamtmiete")),
                         default=-1,
@@ -278,8 +278,8 @@ def _amount_label_from_context(context: str) -> str | None:
                     if _best_gesamt >= 0 and _best_gesamt > _best_nk:
                         return "Gesamtmiete"
                 else:
-                    # Kein angehängter Value — alter Positions-Algorithmus:
-                    # "insgesamt" vor "nebenkosten/betriebskosten" → Betrag ist das Gesamt.
+                    # No appended value — old position-based algorithm:
+                    # "insgesamt" before "nebenkosten/betriebskosten" → amount is the total.
                     nk_idx = min(
                         ctx.find("nebenkosten") if "nebenkosten" in ctx else len(ctx),
                         ctx.find("betriebskosten") if "betriebskosten" in ctx else len(ctx),
@@ -287,46 +287,46 @@ def _amount_label_from_context(context: str) -> str | None:
                     if ctx.find("insgesamt") < nk_idx:
                         return "Gesamtmiete"
         return "Nebenkosten"
-    # Schadensersatz / Gesamtschaden — VOR insgesamt-Check (verhindert Gesamtmiete-Label bei
-    # "Gesamtschaden insgesamt EUR X" — Schadensersatz hat Vorrang vor Gesamtmiete)
+    # Damages / total damage — BEFORE the "insgesamt" check (prevents a total-rent label
+    # for "Gesamtschaden insgesamt EUR X" — damages take precedence over total rent)
     if any(k in ctx for k in ("gesamtschaden", "schadensersatz", "schadensposten", "schadensbetrag")):
         return "Schadensersatz"
-    # FIX 1: Umsatzvolumen / Portfolio — VOR insgesamt-Check (verhindert Gesamtmiete-Label bei
-    # "Gesamtumsatz insgesamt EUR 12 Mio." — Umsatzvolumen hat Vorrang vor Gesamtmiete)
+    # FIX 1: Revenue volume / portfolio — BEFORE the "insgesamt" check (prevents a total-rent
+    # label for "Gesamtumsatz insgesamt EUR 12 Mio." — revenue volume takes precedence over total rent)
     if any(k in ctx for k in ("umsatzvolumen", "jahresumsatz", "gesamtumsatz", "jahresumsatz", "portfoliowert", "portfolio-wert")):
         return "Umsatzvolumen"
-    # FIX 4: Gutachtenkosten / Sachverständigenkosten — VOR insgesamt-Check und VOR Miete
+    # FIX 4: Expert/appraisal costs — BEFORE the "insgesamt" check and BEFORE rent
     if any(k in ctx for k in ("gutachten", "sachverständigen", "sachverstaendigen", "gutachterkosten", "sachverständigenkosten", "sachverstaendigenkosten")):
         return "Gutachtenkosten"
-    # Gesamtmiete — "insgesamt" ohne Nebenkosten-Keyword im Kontext
+    # Total rent — "insgesamt" without an ancillary-costs keyword in the context
     if "insgesamt" in ctx:
         return "Gesamtmiete"
-    # Miete — spezifische Komposita inkl. Grundmiete und Kaltmiete
+    # Rent — specific compounds including base rent and cold rent
     if any(k in ctx for k in ("kaltmiete", "grundmiete", "nettomiete", "monatsmiete", "mietzins")):
         return "Miete"
-    # Bußgeld / OWi — Vorrang vor Vertragsstrafe
+    # Fine / regulatory offense — takes precedence over contract penalty
     if any(k in ctx for k in ("bußgeld", "bussgeld", "verwarnungsgeld", "geldbuße", "geldbusse", "owi", "ordnungswidrigkeit")):
         return "Bußgeld"
-    # Vertragsstrafe / Pönale — Vorrang vor Gehalt (PR13 P3)
+    # Contract penalty — takes precedence over salary (PR13 P3)
     if any(k in ctx for k in ("vertragsstrafe", "pönale", "poenale", "verstoß", "verstoss")):
         return "Vertragsstrafe"
-    # Jahresprämie (vor allgemeinem Gehalt-Match)
+    # Annual bonus (before the general salary match)
     if "jahresprämie" in ctx or "jahrespraemie" in ctx:
         return "Jahresprämie"
-    # Gehalt / Vergütung
+    # Salary / remuneration
     if any(k in ctx for k in ("bruttogehalt", "monatsgehalt", "jahresgehalt", "jahresbrutto")):
         return "Gehalt"
     if any(k in ctx for k in ("gehalt", "vergütung", "verguetung", "lohn", "entlohnung")):
         return "Gehalt"
-    # Haftungsbegrenzung / Haftungslimit
+    # Liability cap / liability limit
     if any(k in ctx for k in ("haftungsbegrenzung", "haftungslimit", "haftungsgrenze", "haftungsobergrenze")):
         return "Haftungsbegrenzung"
     if "haftung" in ctx:
         return "Haftung"
-    # Mindestabnahme / Mindestbestellwert
+    # Minimum purchase quantity / minimum order value
     if any(k in ctx for k in ("mindestabnahme", "mindestabnahmeverpflichtung", "mindestbestellwert", "mindestmenge")):
         return "Mindestabnahme"
-    # Forderung (spezifisch)
+    # Claim/receivable (specific)
     if "forderungsbetrag" in ctx:
         return "Forderungsbetrag"
     if "forderung" in ctx:
@@ -337,9 +337,9 @@ def _amount_label_from_context(context: str) -> str | None:
 def _human_label_for_evidence(field: str, value: str, quote: str, doc_type: str) -> str | None:
     field_key = str(field or "").strip().lower()
     quote_l = str(quote or "").lower()
-    # Beträge: kontextbasiert ableiten; None = unterdrücken
+    # Amounts: derive from context; None = suppress
     if field_key == "betraege":
-        # Kombinierter Kontext aus Quote + Value für robuste Erkennung
+        # Combined context from quote + value for robust detection
         return _amount_label_from_context(f"{quote} {value}")
     if field_key == "datum_beginn":
         # FIX 4/7: Use doc_type to assign meaningful label; avoid "Mietbeginn" for non-Miet docs.
@@ -351,9 +351,9 @@ def _human_label_for_evidence(field: str, value: str, quote: str, doc_type: str)
         if any(k in doc_type_l for k in ("arbeit", "kündigung", "kuendigung", "beschäftigung", "beschaeftigung")):
             return "Beschäftigungsbeginn"
         # For unrecognized doc_type, derive label from quote context.
-        # FIX 3: "Mietbeginn" darf NUR via doc_type vergeben werden (Zeilen 349-350).
-        # Quote-Context darf KEIN "Mietbeginn" erzeugen um Fehlklassifizierung bei
-        # Nicht-Miet-Dokumenten (z.B. Scheidungsfolgenvereinbarung) zu verhindern.
+        # FIX 3: "Mietbeginn" may ONLY be assigned via doc_type (lines 349-350).
+        # The quote context must NOT produce "Mietbeginn", to prevent misclassification
+        # on non-rental documents (e.g. a divorce settlement agreement).
         if any(k in quote_l for k in ("unterhalt", "unterhaltszahlung", "kindesunterhalt", "unterhaltspflicht")):
             return "Unterhaltsbeginn"
         if any(k in quote_l for k in ("arbeit", "beschäftigung", "dienstverhältnis", "anstellung")):
@@ -371,7 +371,7 @@ _2DIGIT_DATE_RE = re.compile(r"\b(\d{1,2})\.(\d{1,2})\.(\d{2})\b")
 
 
 def _normalize_date_value_for_dedup(value: str) -> str:
-    """FIX 3: Normalize 2-digit years to 4-digit for deduplication.
+    """FIX 3: Normalizes 2-digit years to 4-digit for deduplication.
 
     '15.12.24' → '15.12.2024'  (treated as same as '15.12.2024')
     """
@@ -400,32 +400,31 @@ def _dedupe_summary_items(items: list[dict]) -> list[dict]:
 
 
 def _norm_amount_canonical(v: Any) -> str:
-    """Normiert Betragswert auf reine Zahl ohne Währungssymbol (lowercase).
+    """Normalizes an amount value to a plain number without a currency symbol (lowercase).
 
     'EUR 12.600,00' ≡ '12.600,00 EUR' ≡ '12.600,00 €' → '12.600,00'
-    Wird für den Kaution-Guard-Vergleich genutzt, um Prefix/Suffix-Varianten
-    des Währungssymbols als gleich zu behandeln.
+    Used for the deposit-guard comparison, so that prefix/suffix variants
+    of the currency symbol are treated as equal.
     """
     stripped = re.sub(r"\s*(?:€|eur(?:o)?)\s*", " ", _normalize_ws(str(v or "")), flags=re.IGNORECASE)
     return _normalize_ws(stripped).strip().lower()
 
 
 def _collect_all_kaution_amounts(segment_results: list[dict]) -> frozenset[str]:
-    """Sammelt alle Kautions-Beträge aus ALLEN Segmenten (normiert, lowercase).
+    """Collects all deposit ("Kaution") amounts across ALL segments (normalized, lowercase).
 
-    Wird für den cross-segment Kaution-Guard benötigt: Wenn ein Rückstand-Item
-    denselben Betrag wie eine Kaution aus einem anderen Segment hat, soll es
-    ebenfalls entfernt werden.
+    Needed for the cross-segment deposit guard: if an arrears item has the
+    same amount as a deposit from another segment, it should also be removed.
 
-    Berücksichtigt:
-    - Items mit field=='kaution'
-    - Items beliebigen fields wo _amount_label_from_context(quote + value) == "Kaution"
-      (deckt Fälle ab, wo field='betraege' gesetzt wurde, aber der Kontext Kaution signalisiert)
+    Takes into account:
+    - Items with field=='kaution'
+    - Items of any field where _amount_label_from_context(quote + value) == "Kaution"
+      (covers cases where field='betraege' was set but the context signals a deposit)
 
-    Speichert jeden Betrag in ZWEI Formen:
-    - vollständig normiert: "eur 12.600,00"
-    - numerisch kanonisch:  "12.600,00"  (Währungssymbol entfernt)
-    So werden Prefix/Suffix-Varianten ("EUR 12.600,00" vs. "12.600,00 EUR") sicher erkannt.
+    Stores each amount in TWO forms:
+    - fully normalized: "eur 12.600,00"
+    - numeric canonical: "12.600,00" (currency symbol removed)
+    This reliably catches prefix/suffix variants ("EUR 12.600,00" vs. "12.600,00 EUR").
     """
     def _norm(v: Any) -> str:
         return _normalize_ws(str(v or "")).strip().lower()
@@ -454,21 +453,21 @@ def _postprocess_eckdaten_items(
     doc_type: str = "generic",
     known_kaution_amounts: "frozenset[str] | None" = None,
 ) -> list[dict]:
-    """Post-Processing für ECKDATEN-Beträge nach Sammlung aus der Evidence-Map.
+    """Post-processing for ECKDATEN amounts after collection from the evidence map.
 
-    1. Kaution-Schutz: Wenn derselbe normierte Betragswert als "kaution"- UND als
-       "rueckstand"-Item vorhanden ist → rueckstand-Eintrag entfernen.
-       Schließt auch cross-segment bekannte Kautions-Beträge ein
-       (known_kaution_amounts aus allen Segmenten des Dokuments).
-       Kaution hat Priorität (auch in Mahnungs-Kontext).
+    1. Deposit guard: if the same normalized amount value exists as both a "kaution"
+       item and a "rueckstand" item → remove the rueckstand entry.
+       Also covers deposit amounts known from other segments
+       (known_kaution_amounts across all segments of the document).
+       Deposit takes priority (even in a dunning-letter context).
 
-    2. Label-Duplikat-Dedup: Identisches (label, normalized_value) → nur erster
-       Eintrag bleibt (bei mehreren Quellen für denselben Betrag erste behalten).
+    2. Label-duplicate dedup: identical (label, normalized_value) → only the first
+       entry is kept (when multiple sources report the same amount, keep the first).
     """
     def _norm_val(v: Any) -> str:
         return _normalize_ws(str(v or "")).strip().lower()
 
-    # 1. Kaution-Schutz: lokale Kautions-Beträge + cross-segment bekannte Beträge
+    # 1. Deposit guard: local deposit amounts + cross-segment known amounts
     local_kaution: set[str] = {
         _norm_val(it.get("value", ""))
         for it in items
@@ -477,15 +476,15 @@ def _postprocess_eckdaten_items(
     }
     kaution_values = local_kaution | (known_kaution_amounts or frozenset())
 
-    # Kaution-Beträge auch als kanonische (währungslose) Form für Prefix/Suffix-Vergleich
+    # Deposit amounts also as a canonical (currency-less) form for prefix/suffix comparison
     kaution_values_canonical = {_norm_amount_canonical(v) for v in kaution_values}
 
     filtered: list[dict] = []
     for it in items:
         field = str(it.get("field", "") or "").lower()
         val_norm = _norm_val(it.get("value", ""))
-        # Rückstand-Item für bekannten Kautions-Betrag entfernen
-        # Vergleich sowohl exakt ("eur 12.600,00") als auch kanonisch ("12.600,00")
+        # Remove an arrears item for a known deposit amount
+        # Compares both exact ("eur 12.600,00") and canonical ("12.600,00") forms
         if field == "rueckstand" and (
             val_norm in kaution_values
             or _norm_amount_canonical(it.get("value", "")) in kaution_values_canonical
@@ -493,7 +492,7 @@ def _postprocess_eckdaten_items(
             continue
         filtered.append(it)
 
-    # 2. Label-Duplikat-Dedup nach berechnetem Anzeige-Label
+    # 2. Label-duplicate dedup by the computed display label
     seen: set[tuple[str, str]] = set()
     deduped: list[dict] = []
     for it in filtered:
@@ -504,7 +503,7 @@ def _postprocess_eckdaten_items(
             doc_type,
         )
         val_norm = _norm_val(it.get("value", ""))
-        # Items ohne Label werden von _evidence_line unterdrückt; durchlassen.
+        # Items with no label are suppressed by _evidence_line; pass them through.
         if label is None:
             deduped.append(it)
             continue
@@ -514,9 +513,8 @@ def _postprocess_eckdaten_items(
         seen.add(key)
         deduped.append(it)
 
-    # 3. FIX 3: Generische Labels (Miete, Betrag, …) unterdrücken, wenn ein
-    #    spezifisches Label (Gutachtenkosten, Rückstand, …) denselben kanonischen
-    #    Betrag abdeckt.
+    # 3. FIX 3: Suppress generic labels (Miete, Betrag, …) when a specific label
+    #    (Gutachtenkosten, Rückstand, …) covers the same canonical amount.
     _GENERIC_LABELS: frozenset[str] = frozenset({"miete", "betrag", "zahlung", "mietzahlung"})
     specific_amounts: set[str] = set()
     for it in deduped:

@@ -1,5 +1,5 @@
 """
-policy.py – Lädt das Policy-Profil aus policy.yaml.
+policy.py – Loads the policy profile from policy.yaml.
 """
 
 from dataclasses import dataclass

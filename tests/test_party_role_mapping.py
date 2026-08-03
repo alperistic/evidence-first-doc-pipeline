@@ -1,12 +1,46 @@
 """
-tests/test_fix3_gericht_last_page.py
-
-FIX 3: Gericht-Treffer die NUR auf der letzten Seite eines
-Mehrseiten-Segments stehen → gefiltert (Cross-Segment-Kontamination).
-Gericht-Treffer auf der ersten Seite → bleiben erhalten.
+Party/role extraction in the evidence map: recognizing contracting parties
+from role-labeled lines (Lieferant, Auftragnehmer, Auftraggeber) in supply
+contracts, and filtering court ("Gericht") mentions that only appear on the
+trailing page of a multi-page segment (cross-segment contamination) while
+keeping genuine court references on the first page or in short segments.
 """
+
 import pytest
+
 from core.evidence_map import build_evidence_map
+
+
+def _pages(text: str):
+    return [{"page": 1, "text": text}]
+
+
+def test_lieferant_triggers_party_extraction():
+    """Zeile mit 'Lieferant:' löst Parteien-Extraktion aus."""
+    text = "Lieferant: Precision Motors Europe AG, Musterstraße 1, 12345 Berlin"
+    em = build_evidence_map(_pages(text))
+    party_values = [e["value"] for e in em if e.get("field") == "parteien"]
+    assert any("Precision Motors Europe AG" in v for v in party_values), (
+        f"'Precision Motors Europe AG' not found in parties: {party_values}"
+    )
+
+
+def test_auftragnehmer_triggers_party_extraction():
+    """Zeile mit 'Auftragnehmer:' löst Parteien-Extraktion aus."""
+    text = "Auftragnehmer: SüdWest Industriekomponenten GmbH"
+    em = build_evidence_map(_pages(text))
+    party_values = [e["value"] for e in em if e.get("field") == "parteien"]
+    assert any("SüdWest Industriekomponenten GmbH" in v or "SudWest" in v or "GmbH" in v for v in party_values), (
+        f"Company not found in parties: {party_values}"
+    )
+
+
+def test_auftraggeber_triggers_party_extraction():
+    """Zeile mit 'Auftraggeber:' löst Parteien-Extraktion aus."""
+    text = "Auftraggeber: Muster GmbH und Auftragnehmer: Bau AG"
+    em = build_evidence_map(_pages(text))
+    party_values = [e["value"] for e in em if e.get("field") == "parteien"]
+    assert len(party_values) >= 1, f"Expected parties, got: {party_values}"
 
 
 def _make_pages(*texts_with_page):

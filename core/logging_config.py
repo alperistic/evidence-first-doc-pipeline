@@ -1,12 +1,13 @@
-"""core/logging_config.py – Strukturiertes Logging via structlog.
+"""core/logging_config.py - Structured logging via structlog.
 
-§203 StGB-konform: Es werden NIEMALS Klartexte aus Dokumenten geloggt.
-Erlaubte Log-Felder: stage, segment_id, doc_hash (SHA256), duration_ms,
-                     token_count, model, event (Fehlerbeschreibung ohne Klartext).
+Designed so that document plaintext is never logged - only metadata
+(hashes, counts, timestamps) is recorded.
+Allowed log fields: stage, segment_id, doc_hash (SHA256), duration_ms,
+                     token_count, model, event (error description without plaintext).
 
-Konfiguration:
-  LOG_LEVEL=DEBUG|INFO|WARNING|ERROR  (Default: INFO)
-  LOG_FORMAT=json|console             (Default: console; in Prod: json)
+Configuration:
+  LOG_LEVEL=DEBUG|INFO|WARNING|ERROR  (default: INFO)
+  LOG_FORMAT=json|console             (default: console; json in production)
 """
 
 from __future__ import annotations
@@ -36,10 +37,10 @@ def _use_json_format() -> bool:
 
 
 def configure_logging() -> None:
-    """Richtet structlog ein. Einmalig beim App-Start aufrufen."""
+    """Sets up structlog. Call once on application start."""
     level = _log_level_from_env()
 
-    # Stdlib-Logging auf gleichen Level setzen (structlog nutzt stdlib als Backend)
+    # Set stdlib logging to the same level (structlog uses stdlib as backend)
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
@@ -55,10 +56,10 @@ def configure_logging() -> None:
     ]
 
     if _use_json_format():
-        # Produktion: maschinenlesbares JSON
+        # Production: machine-readable JSON
         renderer = structlog.processors.JSONRenderer()
     else:
-        # Entwicklung: farbige Konsolenausgabe
+        # Development: colored console output
         renderer = structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty())
 
     structlog.configure(
@@ -80,16 +81,16 @@ def configure_logging() -> None:
     handler.setFormatter(formatter)
 
     root = logging.getLogger()
-    # Vorhandene Handler ersetzen
+    # Replace existing handlers
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(level)
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
-    """Gibt einen benannten structlog Logger zurück.
+    """Returns a named structlog logger.
 
-    Verwendung:
+    Usage:
         log = get_logger(__name__)
         log.info("segment_processed", stage="pipeline", duration_ms=120, token_count=800)
     """

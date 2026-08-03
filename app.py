@@ -1,6 +1,8 @@
 """
-app.py – LATE Demo: Dokumenten-Zusammenfassung für Rechtsanwaltskanzleien
-§203 StGB-konform: Kein Dokument wird gespeichert, kein Klartext geloggt.
+app.py – Confidential document analysis pipeline: document summarization demo.
+Legal documents are used as the primary example use case, but the pipeline
+is domain-agnostic. Designed so that no document content is persisted and
+no plaintext is logged - only a SHA-256 hash is stored.
 """
 
 from dotenv import load_dotenv
@@ -30,41 +32,41 @@ from ui.result_renderer import render_results
 from workflows.doc_summary import DocSummaryWorkflow
 
 # ---------------------------------------------------------------------------
-# Seiten-Konfiguration
+# Page configuration
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="LATE – Dokument-Analyse",
-    page_icon="⚖️",
+    page_title="Document Analysis Pipeline",
+    page_icon="📄",
     layout="wide",
 )
 
 # ---------------------------------------------------------------------------
-# Verschwiegenheitshinweis (Kern-Anforderung)
+# Confidentiality notice (core requirement)
 # ---------------------------------------------------------------------------
 st.warning(
-    "**Verschwiegenheitshinweis:** Dieses System verarbeitet mandantenbezogene Unterlagen. "
-    "Es werden ausschließlich Dokument-Hashes (SHA-256) gespeichert – kein Volltext, "
-    "kein Dateiname. Die Übertragung erfolgt verschlüsselt an Azure OpenAI (EU-Region, AVV). "
-    "§203-gerecht ausgestaltet über Berufsgeheimnisträger-Zusatzvereinbarung. "
-    "Eingabe-Anonymisierung ist optional konfigurierbar (Sidebar). "
-    "Die generierten Zusammenfassungen sind Vorschläge und ersetzen keine anwaltliche Prüfung.",
+    "**Confidentiality notice:** this system processes confidential documents. "
+    "Only a SHA-256 document hash is stored - never the full text or the "
+    "filename. Transmission to Azure OpenAI is encrypted (configurable EU "
+    "region endpoint). Input anonymization is optional and configurable "
+    "(sidebar). Generated summaries are suggestions only and do not replace "
+    "expert review by a qualified professional.",
     icon="⚠️",
 )
 
-st.title("LATE – Rechtsdokument-Analyse")
+st.title("Document Analysis Pipeline - Demo")
 
 loaded_policy = load_policy()
 policy = loaded_policy.config
 workflow = DocSummaryWorkflow()
 
 # ---------------------------------------------------------------------------
-# Sidebar: Einstellungen
+# Sidebar: settings
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    st.header("Einstellungen")
+    st.header("Settings")
     profile_labels = {
-        "balanced": "Sicher (Standard)",
-        "strict": "Maximal sicher (minimiert)",
+        "balanced": "Safe (default)",
+        "strict": "Maximally safe (minimized)",
     }
     can_override_profile = policy.dev_mode and policy.allow_ui_override
     if can_override_profile:
@@ -73,13 +75,13 @@ with st.sidebar:
         if default_profile not in override_options:
             default_profile = "balanced"
         selected_profile = st.selectbox(
-            "Modus (DEV-Override)",
+            "Mode (DEV override)",
             override_options,
             index=override_options.index(default_profile),
             format_func=lambda p: profile_labels.get(p, p),
-            help="Nur im DEV-Modus übersteuerbar. Fast ist nicht in der Produkt-UI verfügbar.",
+            help="Only overridable in DEV mode. Fast is not available in the product UI.",
         )
-        st.caption("DEV-Override aktiv: Modus wird aus Sidebar übernommen.")
+        st.caption("DEV override active: mode is taken from the sidebar.")
     else:
         selected_profile = None
     effective_profile = workflow.resolve_effective_profile(
@@ -88,39 +90,39 @@ with st.sidebar:
     )
     if not can_override_profile:
         if effective_profile == "strict":
-            st.info("Modus: Maximal sicher (minimiert)")
+            st.info("Mode: maximally safe (minimized)")
         else:
-            st.info("Modus: Sicher (Standard) – nur pseudonymisierte Inhalte werden verarbeitet.")
-        st.caption(f"Read-only aus {loaded_policy.source_path.name}.")
+            st.info("Mode: safe (default) - only pseudonymized content is processed.")
+        st.caption(f"Read-only from {loaded_policy.source_path.name}.")
 
     enable_redaction = st.toggle(
-        "Eingabe-Anonymisierung (Redaction)",
+        "Input anonymization (redaction)",
         value=False,
         help=(
-            "Maskiert Personen, Adressen und Entities vor dem LLM-Call. "
-            "Default OFF: §203-Compliance läuft über den Azure-Vertrag (AVV), "
-            "nicht über Input-Redaction."
+            "Masks people, addresses, and entities before the LLM call. "
+            "Default OFF: confidentiality is handled via the Azure contract "
+            "terms, not via input redaction."
         ),
     )
 
-    advanced_expander = st.expander("Erweitert (DEV)", expanded=False)
+    advanced_expander = st.expander("Advanced (DEV)", expanded=False)
     with advanced_expander:
-        debug_mode = st.toggle("Debug anzeigen", value=False)
-        auto_classify = True  # FIX 4: always active – LLM doc class guess ist fester Pipeline-Bestandteil
+        debug_mode = st.toggle("Show debug info", value=False)
+        auto_classify = True  # always active - LLM doc-class guess is a fixed part of the pipeline
         dictionary_entities_input = st.text_area(
-            "Zusätzliche Entities sicher maskieren (optional)",
+            "Additional entities to mask safely (optional)",
             value="",
-            help="Eine Entity pro Zeile, z. B. Namen, Organisationen oder Anschriften.",
+            help="One entity per line, e.g. names, organizations, or addresses.",
             height=120,
         )
         env_enable_fuzzy = get_config().enable_fuzzy
         dictionary_fuzzy = st.toggle(
-            "Fuzzy Matching (approx.)",
+            "Fuzzy matching (approx.)",
             value=env_enable_fuzzy,
-            help="Bei aktivem Fuzzy-Matching werden ähnliche Schreibweisen mit maskiert.",
+            help="When fuzzy matching is active, similar spellings are also masked.",
         )
         dictionary_threshold = st.slider(
-            "Fuzzy-Threshold",
+            "Fuzzy threshold",
             min_value=85,
             max_value=95,
             value=92,
@@ -144,11 +146,11 @@ with st.sidebar:
 
     if enable_redaction:
         if must_use_redacted and runtime_config.redact_required:
-            st.success("✅ Azure EU-Region · SHA-256 Audit-Trail · Pseudonymisierung aktiv")
+            st.success("Configurable EU-region endpoint - SHA-256 audit trail - pseudonymization active")
         elif not must_use_redacted:
-            st.warning("LLM-Eingabe: Profil fast aktiv (nur DEV/Policy).")
+            st.warning("LLM input: fast profile active (DEV/policy only).")
     else:
-        st.info("✅ Azure EU-Region · SHA-256 Audit-Trail · Eingabe-Anonymisierung deaktiviert (AVV)")
+        st.info("Configurable EU-region endpoint - SHA-256 audit trail - input anonymization disabled")
 
     with advanced_expander:
         st.caption(
@@ -164,15 +166,15 @@ with st.sidebar:
             f"redact_required: {runtime_config.redact_required} | "
             f"fail_closed: {runtime_config.fail_closed}"
         )
-        st.caption(f"citation_verify_mode: {citation_verify_mode} (LATE_CITATION_VERIFY)")
+        st.caption(f"citation_verify_mode: {citation_verify_mode} (DOCPIPE_CITATION_VERIFY)")
         if debug_mode and not allow_plaintext_preview:
-            st.caption("Plaintext-Preview bleibt deaktiviert (ALLOW_PLAINTEXT_PREVIEW=0).")
+            st.caption("Plaintext preview stays disabled (ALLOW_PLAINTEXT_PREVIEW=0).")
 
     st.divider()
-    st.caption("LATE v0.1 – MVP Demo")
+    st.caption("Document Analysis Pipeline v0.1 - MVP demo")
 
 # ---------------------------------------------------------------------------
-# Session-State initialisieren
+# Initialize session state
 # ---------------------------------------------------------------------------
 for key, default in [
     ("state_key", None),
@@ -186,19 +188,19 @@ for key, default in [
         st.session_state[key] = default
 
 # ---------------------------------------------------------------------------
-# Hauptbereich: Upload
+# Main area: upload
 # ---------------------------------------------------------------------------
 uploaded_file = st.file_uploader(
-    "Dokument hochladen (PDF oder DOCX)",
+    "Upload document (PDF or DOCX)",
     type=["pdf", "docx"],
-    help="Das Dokument wird nicht gespeichert. Nur der SHA-256-Hash wird im Audit-Log erfasst.",
+    help="The document is not stored. Only the SHA-256 hash is recorded in the audit log.",
 )
 
 if uploaded_file is not None:
     file_bytes = uploaded_file.read()
     doc_hash = compute_sha256(file_bytes)
 
-    # Neues Dokument oder geänderte Policy/Profil-Einstellung → State zurücksetzen
+    # New document or changed policy/profile setting -> reset state
     current_state_key = (
         doc_hash,
         runtime_config.cache_scope_key,
@@ -211,14 +213,14 @@ if uploaded_file is not None:
         st.session_state.detected_class = None
         st.session_state.classify_used_chars = 0
 
-    with st.expander("Dokument-Metadaten", expanded=False):
+    with st.expander("Document metadata", expanded=False):
         st.code(f"SHA-256: {doc_hash}", language=None)
         st.caption(
-            f"Dateiname (nur lokal): {uploaded_file.name} | "
-            f"Größe: {len(file_bytes):,} Bytes"
+            f"Filename (local only): {uploaded_file.name} | "
+            f"Size: {len(file_bytes):,} bytes"
         )
 
-    # Textextraktion
+    # Text extraction
     try:
         extract_t0 = perf_counter()
         extraction = extract_text_with_meta(file_bytes, uploaded_file.name)
@@ -233,19 +235,19 @@ if uploaded_file is not None:
 
     if not raw_text.strip():
         st.error(
-            "Kein lesbarer Text im Dokument gefunden. "
-            "Bei gescannten PDFs bitte OCR-Fallback konfigurieren "
+            "No readable text found in the document. "
+            "For scanned PDFs, please configure the OCR fallback "
             "(AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT / AZURE_DOCUMENT_INTELLIGENCE_KEY)."
         )
         st.stop()
 
     if extraction.ocr_used:
         st.info(
-            "Dokument wurde per OCR verarbeitet (gescannte PDF erkannt). "
-            "Bitte Ergebnis anwaltlich besonders sorgfältig gegenprüfen."
+            "Document was processed via OCR (scanned PDF detected). "
+            "Please review the result especially carefully."
         )
     else:
-        st.caption("Textextraktion: Direkter Dokumenttext (kein OCR-Fallback).")
+        st.caption("Text extraction: direct document text (no OCR fallback).")
 
     dictionary_report: dict = {"matched_entities_count": 0, "matched_masks": [], "mask_counts": {}}
     redaction_stats: dict = {}
@@ -270,13 +272,13 @@ if uploaded_file is not None:
         except Exception as exc:
             if must_use_redacted and runtime_config.redact_required and runtime_config.fail_closed:
                 st.error(
-                    "Hard Gate aktiv: Redaction fehlgeschlagen, Analyse wird aus Sicherheitsgründen abgebrochen. "
-                    f"Fehler: {exc}"
+                    "Hard gate active: redaction failed, analysis is aborted for safety reasons. "
+                    f"Error: {exc}"
                 )
                 st.stop()
             st.error(
-                "Redaction fehlgeschlagen. Aus Datenschutzgründen wird kein LLM-Call ausgeführt. "
-                f"Fehler: {exc}"
+                "Redaction failed. No LLM call will be made, for privacy reasons. "
+                f"Error: {exc}"
             )
             st.stop()
 
@@ -291,18 +293,18 @@ if uploaded_file is not None:
         text_for_llm = redacted_text
         if must_use_redacted:
             if not isinstance(context_mapping, dict) or not context_mapping:
-                st.error("Hard Gate aktiv: Mapping fehlt oder ist ungültig. LLM-Call wird blockiert.")
+                st.error("Hard gate active: mapping is missing or invalid. LLM call is blocked.")
                 st.stop()
             if not text_for_llm.strip():
                 st.error(
-                    "Hard Gate aktiv: redacted_text ist leer. "
-                    "Es wird kein LLM-Call ausgeführt (fail_closed=true)."
+                    "Hard gate active: redacted_text is empty. "
+                    "No LLM call will be made (fail_closed=true)."
                 )
                 st.stop()
         elif not text_for_llm.strip():
             st.warning(
-                "redacted_text ist leer; es wird eine minimierte Ersatznutzlast verwendet "
-                "(kein Fallback auf Originaltext)."
+                "redacted_text is empty; a minimized placeholder payload is used "
+                "(no fallback to the original text)."
             )
             text_for_llm = "[REDACTION_EMPTY]"
     else:
@@ -322,26 +324,26 @@ if uploaded_file is not None:
         first_page = segments[0].get("page_start", segments[0].get("start_page", "?"))
         last_page = segments[-1].get("page_end", segments[-1].get("end_page", "?"))
         st.caption(
-            f"Segmentierung: Segmente: {len(segments)} (dokumentbasiert), "
-            f"Durchschnitt: {avg_pages_per_segment:.2f} Seiten/Segment "
-            f"(S. {first_page}-{last_page})."
+            f"Segmentation: segments: {len(segments)} (document-based), "
+            f"average: {avg_pages_per_segment:.2f} pages/segment "
+            f"(p. {first_page}-{last_page})."
         )
-        with st.expander("Erkannte Segmente", expanded=False):
+        with st.expander("Detected segments", expanded=False):
             rows: list[dict[str, str]] = []
             for seg in segments:
                 row: dict[str, str] = {
                     "Segment": str(seg.get("segment_id")),
-                    "Seiten": (
+                    "Pages": (
                         f"{seg.get('page_start', seg.get('start_page', '?'))}-"
                         f"{seg.get('page_end', seg.get('end_page', '?'))}"
                     ),
-                    "Typ": str(seg.get("doc_type_guess", "Unklar")),
+                    "Type": str(seg.get("doc_type_guess", "Unclear")),
                     "Confidence": f"{float(seg.get('confidence', 0.0)):.2f}",
                 }
                 if debug_mode:
                     boundary_score = seg.get("boundary_score")
-                    row["Boundary-Score"] = "n/a" if boundary_score is None else f"{float(boundary_score):.2f}"
-                    row["Boundary-Reasons"] = " | ".join(
+                    row["Boundary score"] = "n/a" if boundary_score is None else f"{float(boundary_score):.2f}"
+                    row["Boundary reasons"] = " | ".join(
                         [str(reason) for reason in list(seg.get("boundary_reasons", []) or [])[:3]]
                     )
                 rows.append(row)
@@ -353,11 +355,11 @@ if uploaded_file is not None:
         classify_used_chars = 0
 
     # -----------------------------------------------------------------------
-    # Redaction Preview + Bestätigung
+    # Redaction preview + confirmation
     # -----------------------------------------------------------------------
     if use_redaction and not st.session_state.confirmed:
-        st.subheader("Anonymisierungs-Vorschau")
-        if st.button("Analyse starten", type="primary", key="start_after_redaction"):
+        st.subheader("Anonymization preview")
+        if st.button("Start analysis", type="primary", key="start_after_redaction"):
             st.session_state.confirmed = True
             st.rerun()
 
@@ -365,54 +367,54 @@ if uploaded_file is not None:
         dict_counts = dict((dictionary_report or {}).get("mask_counts", {}) or {})
         dict_entity_hits = int((dictionary_report or {}).get("matched_entities_count", 0))
         if dict_entity_hits > 0:
-            st.success(f"{dict_entity_hits} Entities zusätzlich maskiert.", icon="✅")
+            st.success(f"{dict_entity_hits} additional entities masked.", icon="✅")
             st.table(
-                [{"Maskierung": mask, "Anzahl": dict_counts.get(mask, 0)} for mask in dict_masks]
+                [{"Mask": mask, "Count": dict_counts.get(mask, 0)} for mask in dict_masks]
             )
         elif dictionary_entities:
-            st.info("Keine zusätzlichen Entity-Treffer im Text gefunden.", icon="ℹ️")
+            st.info("No additional entity matches found in the text.", icon="ℹ️")
 
         red_summary = _build_redaction_summary(redaction_stats.get("mask_counts"))
         total_masks = sum(red_summary.values())
         if red_summary:
             st.success(
-                f"Regex/Heuristik-Maskierungen: {total_masks}",
+                f"Regex/heuristic masks applied: {total_masks}",
                 icon="✅",
             )
             st.table(
-                [{"Maskierung": label, "Anzahl": count} for label, count in red_summary.items()]
+                [{"Mask": label, "Count": count} for label, count in red_summary.items()]
             )
             placeholders = list(redaction_stats.get("placeholder_keys") or [])
             if placeholders:
-                st.caption("Verwendete Platzhalter")
+                st.caption("Placeholders used")
                 st.code(", ".join(placeholders), language=None)
             mask_types = dict(redaction_stats.get("mask_types") or {})
             if mask_types:
                 st.caption("Mask types (counts)")
-                st.table([{"Typ": k, "Anzahl": v} for k, v in mask_types.items()])
+                st.table([{"Type": k, "Count": v} for k, v in mask_types.items()])
         else:
             st.info(
-                "Keine anonymisierbaren Datenpunkte (IBAN, Aktenzeichen, "
-                "Telefon, E-Mail) im Dokument erkannt.",
+                "No maskable data points (IBAN, case reference, "
+                "phone, email) detected in the document.",
                 icon="ℹ️",
             )
         if debug_mode and allow_plaintext_preview:
-            st.warning("Plaintext-Debug aktiv (nur lokal, nicht exportiert/geloggt).", icon="⚠️")
-            st.text_area("Plaintext Preview (Debug)", value=raw_text[:2000], height=180, disabled=True)
+            st.warning("Plaintext debug active (local only, not exported/logged).", icon="⚠️")
+            st.text_area("Plaintext preview (debug)", value=raw_text[:2000], height=180, disabled=True)
         st.stop()
 
     # -----------------------------------------------------------------------
-    # Analyse starten
+    # Start analysis
     # -----------------------------------------------------------------------
     if st.session_state.result is None:
-        if st.button("Analyse starten", type="primary"):
+        if st.button("Start analysis", type="primary"):
             source_pages_by_no = {
                 _page_no(page): page
                 for page in pages
                 if _page_no(page)
             }
 
-            with st.spinner("Analyse läuft …"):
+            with st.spinner("Analysis running..."):
                 try:
                     analysis = workflow.run_analysis(
                         segments,
@@ -432,7 +434,7 @@ if uploaded_file is not None:
                     st.stop()
 
             if analysis["cache_hit"]:
-                st.info("Ergebnis aus Cache geladen (gleiches Dokument + Runtime-Konfiguration + Modell).")
+                st.info("Result loaded from cache (same document + runtime configuration + model).")
             st.session_state.result = analysis["result_bundle"]
             st.session_state.audit_entry = analysis["audit_entry"]
 
@@ -512,26 +514,26 @@ if uploaded_file is not None:
 
 
 # ---------------------------------------------------------------------------
-# Audit-Log Ansicht
+# Audit log view
 # ---------------------------------------------------------------------------
-with st.expander("Audit-Log (letzte 50 Einträge)", expanded=False):
+with st.expander("Audit log (last 50 entries)", expanded=False):
     logs = get_recent_logs()
     if logs:
         st.dataframe(
             logs,
             use_container_width=True,
             column_config={
-                "doc_hash": st.column_config.TextColumn("Dokument-Hash (SHA-256)", width="large"),
-                "timestamp": st.column_config.TextColumn("Zeitstempel (UTC)"),
-                "doc_class": st.column_config.TextColumn("Klasse"),
-                "policy_profile": st.column_config.TextColumn("Policy-Profil"),
-                "redaction_applied": st.column_config.NumberColumn("Redaction angewandt"),
-                "pseudonymization_applied": st.column_config.NumberColumn("Pseudonymisierung angewandt"),
-                "classify_used_chars": st.column_config.NumberColumn("Classify-Zeichen"),
+                "doc_hash": st.column_config.TextColumn("Document hash (SHA-256)", width="large"),
+                "timestamp": st.column_config.TextColumn("Timestamp (UTC)"),
+                "doc_class": st.column_config.TextColumn("Class"),
+                "policy_profile": st.column_config.TextColumn("Policy profile"),
+                "redaction_applied": st.column_config.NumberColumn("Redaction applied"),
+                "pseudonymization_applied": st.column_config.NumberColumn("Pseudonymization applied"),
+                "classify_used_chars": st.column_config.NumberColumn("Classify chars"),
                 "token_count": st.column_config.NumberColumn("Tokens"),
-                "model": st.column_config.TextColumn("Modell"),
-                "citation_status": st.column_config.TextColumn("Citation-Status"),
+                "model": st.column_config.TextColumn("Model"),
+                "citation_status": st.column_config.TextColumn("Citation status"),
             },
         )
     else:
-        st.caption("Noch keine Einträge vorhanden.")
+        st.caption("No entries yet.")

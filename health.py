@@ -1,19 +1,19 @@
 """
-health.py – Leichtgewichtiger Health-Check-Server (Python stdlib).
+health.py – Lightweight health-check server (Python stdlib).
 
-Läuft als Daemon-Thread parallel zu Streamlit auf einem separaten Port.
+Runs as a daemon thread alongside Streamlit on a separate port.
 
-Endpunkte:
-  GET /health  → 200 {"status": "ok"}                         (Liveness)
-  GET /ready   → 200 {"status": "ok", "db": "ok"}             (Readiness)
-               → 503 {"status": "error", "db": "unreachable"} (DB nicht erreichbar)
+Endpoints:
+  GET /health  → 200 {"status": "ok"}                         (liveness)
+  GET /ready   → 200 {"status": "ok", "db": "ok"}             (readiness)
+               → 503 {"status": "error", "db": "unreachable"} (DB unreachable)
 
-Konfiguration:
-  HEALTH_PORT  – Port des Health-Servers (Default: 8502)
+Configuration:
+  HEALTH_PORT  – Port of the health server (default: 8502)
 
-Idempotenz:
-  start_health_server() ist safe bei mehrfachem Aufruf (Streamlit re-executes
-  app.py bei jedem Reload). Ein threading.Event verhindert race conditions.
+Idempotency:
+  start_health_server() is safe to call multiple times (Streamlit re-executes
+  app.py on every reload). A threading.Event prevents race conditions.
 """
 
 from __future__ import annotations
@@ -26,33 +26,33 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Konfiguration
+# Configuration
 # ---------------------------------------------------------------------------
 
 _HEALTH_PORT: int = int(os.getenv("HEALTH_PORT", "8502"))
 
-# audit.db liegt im Arbeitsverzeichnis – identisch mit governance/audit.py
+# audit.db lives in the working directory – same location as governance/audit.py
 _AUDIT_DB_PATH: Path = Path("audit.db")
 
 # ---------------------------------------------------------------------------
-# Idempotenz-Guard (threading.Event ist thread-safe, Bool wäre es nicht)
+# Idempotency guard (threading.Event is thread-safe, a bool would not be)
 # ---------------------------------------------------------------------------
 
 _started: threading.Event = threading.Event()
 
 
 # ---------------------------------------------------------------------------
-# DB-Check
+# DB check
 # ---------------------------------------------------------------------------
 
 
 def _check_db() -> tuple[bool, str]:
-    """Prüft ob die Datenbank erreichbar ist.
+    """Checks whether the database is reachable.
 
     Returns:
-        (ok, label) – ok=True wenn erreichbar, label für JSON-Response.
+        (ok, label) – ok=True if reachable, label for the JSON response.
 
-    # TODO: PostgreSQL-Ping ersetzen wenn Hetzner live
+    # TODO: swap for a PostgreSQL ping if the backing store moves to Postgres
     """
     try:
         conn = sqlite3.connect(str(_AUDIT_DB_PATH), timeout=2.0)
@@ -64,12 +64,12 @@ def _check_db() -> tuple[bool, str]:
 
 
 # ---------------------------------------------------------------------------
-# Request-Handler
+# Request handler
 # ---------------------------------------------------------------------------
 
 
 class _HealthHandler(BaseHTTPRequestHandler):
-    """Minimaler HTTP-Handler für /health und /ready."""
+    """Minimal HTTP handler for /health and /ready."""
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/health":
@@ -98,13 +98,13 @@ class _HealthHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, fmt: str, *args: object) -> None:  # noqa: ANN002
-        # stdlib-HTTP-Logging unterdrücken – nur bei DEBUG einschalten
+        # Suppress stdlib HTTP logging – only enable it when DEBUG is set
         if os.getenv("DEBUG", "").lower() in {"1", "true", "yes", "on"}:
             super().log_message(fmt, *args)
 
 
 # ---------------------------------------------------------------------------
-# Server-Thread
+# Server thread
 # ---------------------------------------------------------------------------
 
 
@@ -114,10 +114,10 @@ def _serve(port: int) -> None:
 
 
 def start_health_server(port: int = _HEALTH_PORT) -> None:
-    """Startet den Health-Server als Daemon-Thread (idempotent).
+    """Starts the health server as a daemon thread (idempotent).
 
-    Mehrfache Aufrufe (z.B. durch Streamlit-Reloads) sind sicher:
-    threading.Event.set() + is_set() ist atomisch.
+    Multiple calls (e.g. from Streamlit reloads) are safe:
+    threading.Event.set() + is_set() is atomic.
     """
     if _started.is_set():
         return

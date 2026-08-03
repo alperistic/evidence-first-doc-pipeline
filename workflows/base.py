@@ -1,29 +1,29 @@
-"""Basisklasse für alle LATE Workflows. LexGuard (governance/) läuft automatisch für jeden Workflow."""
+"""Base class for all pipeline workflows. The governance layer (governance/) runs automatically for every workflow."""
 
 from abc import ABC, abstractmethod
 from typing import Any
 
 
 class BaseWorkflow(ABC):
-    """Basisklasse für alle LATE Workflows. LexGuard (governance/) läuft automatisch für jeden Workflow."""
+    """Base class for all pipeline workflows. The governance layer (governance/) runs automatically for every workflow."""
 
     @property
     @abstractmethod
     def doc_class(self) -> str:
-        """Dokumentklasse, für die dieser Workflow zuständig ist."""
+        """Document class this workflow is responsible for."""
         ...
 
     @abstractmethod
     def process(self, pages: list[Any], policy: Any, redaction_context: Any) -> dict:
         """
-        Verarbeitet die Seiten eines Dokuments und gibt ein strukturiertes Ergebnis zurück.
+        Processes a document's pages and returns a structured result.
 
         Args:
-            pages: Liste der extrahierten Seiteninhalte.
-            policy: Geladene PolicyConfig / LoadedPolicy.
-            redaction_context: RedactionContext aus governance/redaction.py.
+            pages: List of extracted page contents.
+            policy: Loaded PolicyConfig / LoadedPolicy.
+            redaction_context: RedactionContext from governance/redaction.py.
 
         Returns:
-            Strukturiertes Ergebnis-Dict.
+            Structured result dict.
         """
         ...

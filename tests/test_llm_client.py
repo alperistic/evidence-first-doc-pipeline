@@ -126,32 +126,32 @@ class TestParseResponseJson:
 
 class TestTrimTextForBudget:
     def test_ohne_env_kein_trimmen(self, monkeypatch):
-        monkeypatch.delenv("LATE_INPUT_MAX_CHARS", raising=False)
+        monkeypatch.delenv("DOCPIPE_INPUT_MAX_CHARS", raising=False)
         text, truncated = _trim_text_for_budget("A" * 5000)
         assert len(text) == 5000
         assert truncated is False
 
     def test_max_chars_0_kein_trimmen(self, monkeypatch):
-        monkeypatch.setenv("LATE_INPUT_MAX_CHARS", "0")
+        monkeypatch.setenv("DOCPIPE_INPUT_MAX_CHARS", "0")
         text, truncated = _trim_text_for_budget("A" * 5000)
         assert len(text) == 5000
         assert truncated is False
 
     def test_text_kuerzer_als_max_kein_trimmen(self, monkeypatch):
-        monkeypatch.setenv("LATE_INPUT_MAX_CHARS", "1000")
+        monkeypatch.setenv("DOCPIPE_INPUT_MAX_CHARS", "1000")
         text, truncated = _trim_text_for_budget("A" * 500)
         assert len(text) == 500
         assert truncated is False
 
     def test_text_laenger_als_max_wird_getrimmt(self, monkeypatch):
-        monkeypatch.setenv("LATE_INPUT_MAX_CHARS", "100")
+        monkeypatch.setenv("DOCPIPE_INPUT_MAX_CHARS", "100")
         original = "B" * 200
         text, truncated = _trim_text_for_budget(original)
         assert len(text) == 100
         assert truncated is True
 
     def test_text_exakt_max_kein_trimmen(self, monkeypatch):
-        monkeypatch.setenv("LATE_INPUT_MAX_CHARS", "50")
+        monkeypatch.setenv("DOCPIPE_INPUT_MAX_CHARS", "50")
         text, truncated = _trim_text_for_budget("C" * 50)
         assert len(text) == 50
         assert truncated is False
@@ -281,7 +281,7 @@ class TestExtractUsageCounts:
 def env_vars(monkeypatch):
     """Setzt alle erforderlichen Umgebungsvariablen."""
     _patched_env(monkeypatch)
-    monkeypatch.delenv("LATE_INPUT_MAX_CHARS", raising=False)
+    monkeypatch.delenv("DOCPIPE_INPUT_MAX_CHARS", raising=False)
 
 
 class TestInvokeJsonTask:
@@ -431,7 +431,7 @@ class TestInvokeJsonTask:
         assert retry_call_tokens > first_call_tokens
 
     def test_input_truncated_flag(self, env_vars, monkeypatch):
-        monkeypatch.setenv("LATE_INPUT_MAX_CHARS", "10")
+        monkeypatch.setenv("DOCPIPE_INPUT_MAX_CHARS", "10")
         response = _mock_response()
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = response
@@ -448,7 +448,7 @@ class TestInvokeJsonTask:
         assert result.input_chars == 10
 
     def test_kein_truncated_bei_kurzem_input(self, env_vars, monkeypatch):
-        monkeypatch.setenv("LATE_INPUT_MAX_CHARS", "1000")
+        monkeypatch.setenv("DOCPIPE_INPUT_MAX_CHARS", "1000")
         response = _mock_response()
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = response

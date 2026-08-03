@@ -1,10 +1,10 @@
 """
-core/export_render.py – Rendering-Logik für Zusammenfassung und Aktennotiz.
+core/export_render.py – Rendering logic for the summary and internal memo.
 
-Enthält: Text-Rendering, Payload-Transformation, Citation-Aggregation,
-apply_output_mode, alle Segment-Render-Funktionen.
+Contains: text rendering, payload transformation, citation aggregation,
+apply_output_mode, all segment render functions.
 
-Formatspezifischer Export (PDF, DOCX) liegt in core/export_format.py.
+Format-specific export (PDF, DOCX) lives in core/export_format.py.
 """
 
 from __future__ import annotations
@@ -36,8 +36,8 @@ from governance.doc_class_policy import resolve_segment_header_document_type
 from governance.redaction import apply_strict_external_mask, restore_from_llm
 
 _EVIDENCE_MARKERS = ("zitat", "quelle", "beleg", "snippet", "citation", "source")
-# Generische Platzhalter-Todos aus den Prompt-Schema-Beispielen — werden in der
-# Ausgabe unterdrückt wenn das LLM sie unverändert zurückgibt.
+# Generic placeholder to-dos from the prompt schema examples — suppressed from
+# the output when the LLM returns them unchanged.
 _GENERIC_TODO_FRAGMENTS: tuple[str, ...] = (
     "frist aus dem dokument prüfen und ggf. notieren",
     "frist aus dem dokument notieren",
@@ -45,18 +45,18 @@ _GENERIC_TODO_FRAGMENTS: tuple[str, ...] = (
 
 
 def _is_generic_todo(item: str) -> bool:
-    """True wenn der Todo-Text ein unveränderter Prompt-Platzhalter ist."""
+    """True if the to-do text is an unmodified prompt placeholder."""
     item_l = item.lower()
     return any(f in item_l for f in _GENERIC_TODO_FRAGMENTS)
-# Felder die nie in der Eckdaten-Ausgabe erscheinen sollen (z.B. unklare Beträge)
+# Fields that must never appear in the key-facts output (e.g. unclear amounts)
 _SUPPRESSED_EVIDENCE_FIELDS = frozenset({"betraege_unklar"})
-# BLOCKER 1: Fristen-Feld darf nur ISO-Daten oder den Fallback-String enthalten.
+# BLOCKER 1: deadline fields may only contain ISO dates or the fallback string.
 _FRISTEN_FIELDS = frozenset({"fristen_termine", "kuendigung_fristen", "datum_beginn"})
 _FRISTEN_DATE_RE = re.compile(r"\b\d{1,2}\.\d{1,2}\.\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b")
 _FRISTEN_FALLBACK = "nicht genannt (Rückfrage erforderlich)"
 _EVIDENCE_CONTAINER_KEYS = ("citations", "citation_candidates", "evidence_map")
 _PARTIES_SOURCE_TRACE_EMITTED: set[str] = set()
-# P1-C: Sensible Daten (IBAN, BIC) in Quellentext-Snippets maskieren – auch in der Kanzleiakte.
+# P1-C: mask sensitive data (IBAN, BIC) in source-text snippets — even in the internal file copy.
 _SNIPPET_IBAN_RE = re.compile(r"\b[A-Z]{2}\d{2}(?:[\s\-]*\d){10,30}\b")
 _SNIPPET_BIC_RE = re.compile(r"\b[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?\b")
 _SNIPPET_MAX_DISPLAY_CHARS = 120
@@ -132,13 +132,14 @@ def apply_output_mode(
     strict_external_mask: bool = True,
 ) -> Any:
     """
-    Export-Modus-Transformation für Kanzleiakte (internal) und Weitergabe (external).
+    Export-mode transformation for the internal file copy (internal) and external
+    hand-off (external).
 
     internal:
-      - Restore für Summary/Aktennotiz-Inhalte
-      - Evidence-Felder bleiben redacted, außer restore_evidence=True
+      - Restores summary/memo content
+      - Evidence fields stay redacted unless restore_evidence=True
     external:
-      - Kein Restore, Payload bleibt redacted
+      - No restore, payload stays redacted
     """
     if mode not in {"internal", "external"}:
         raise ValueError("mode must be 'internal' or 'external'")
@@ -155,12 +156,12 @@ def apply_output_mode(
 
 
 # ---------------------------------------------------------------------------
-# Gemeinsame Hilfsfunktionen
+# Shared helper functions
 # ---------------------------------------------------------------------------
 
 def _parse_lines(summary: str):
     """
-    Zerlegt den Summary-Text in typisierte Zeilen.
+    Splits the summary text into typed lines.
     Yields (type, text): type in {'header', 'bullet', 'text', 'empty'}
     """
     for line in summary.splitlines():
@@ -182,7 +183,7 @@ def _parse_lines(summary: str):
 
 
 def _strip_md(text: str) -> str:
-    """Entfernt einfache Markdown-Formatierungen (Bold, Italic)."""
+    """Removes simple markdown formatting (bold, italic)."""
     text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
     text = re.sub(r"\*(.*?)\*", r"\1", text)
     return text
@@ -538,13 +539,13 @@ def render_aktenvermerk_text(parsed: dict, coverage: dict | None = None) -> str:
 
 
 def _redact_snippet_sensitive(text: str, *, max_chars: int = _SNIPPET_MAX_DISPLAY_CHARS) -> str:
-    """P1-C: Maskiert IBAN/BIC in Quellentext-Snippets und kürzt auf max_chars."""
+    """P1-C: masks IBAN/BIC in source-text snippets and truncates to max_chars."""
     out = _SNIPPET_IBAN_RE.sub("[IBAN]", str(text or ""))
     out = _SNIPPET_BIC_RE.sub("[BIC]", out)
     out = _normalize_ws(out)
     if len(out) > max_chars:
         out = out[:max_chars].rstrip()
-        # Am Wortende kürzen
+        # Truncate at a word boundary
         last_space = out.rfind(" ")
         if last_space > max_chars // 2:
             out = out[:last_space]
@@ -553,7 +554,7 @@ def _redact_snippet_sensitive(text: str, *, max_chars: int = _SNIPPET_MAX_DISPLA
 
 
 def _sanitize_fristen_value(field: str, value: str) -> str:
-    """BLOCKER 1: Fristen-Felder dürfen nur Datumswerte enthalten."""
+    """BLOCKER 1: deadline fields may only contain date values."""
     if field.strip().lower() not in _FRISTEN_FIELDS:
         return value
     if not value or value.strip().lower() == "missing":
@@ -566,9 +567,9 @@ def _sanitize_fristen_value(field: str, value: str) -> str:
 
 
 def _filter_fallback_fristen_if_real_exist(items: list[dict]) -> list[dict]:
-    """Fix 3b: Entfernt Fristen-Fallback-Items wenn valide Datums-Fristen vorhanden sind.
+    """Fix 3b: removes deadline fallback items when valid date-based deadlines exist.
 
-    Verhindert dass 'nicht genannt' neben echten Fristen erscheint.
+    Prevents 'nicht genannt' from appearing alongside real deadlines.
     """
     _fristen_f = frozenset({"fristen_termine", "kuendigung_fristen", "datum_beginn"})
     fristen_items = [ev for ev in items if str(ev.get("field", "")).lower() in _fristen_f]
@@ -590,11 +591,11 @@ def _filter_fallback_fristen_if_real_exist(items: list[dict]) -> list[dict]:
 
 
 def _sanitize_fristen_label(field: str, label: str) -> str:
-    """BLOCKER 1: Label für Fristen-Felder normalisieren."""
+    """BLOCKER 1: normalizes the label for deadline fields."""
     field_key = field.strip().lower()
     if field_key not in _FRISTEN_FIELDS:
         return label
-    # Erlaubte Labels aus _SUMMARY_LABELS beibehalten
+    # Keep allowed labels from _SUMMARY_LABELS as-is
     allowed = {"Frist/Termin", "Kündigungsfrist", "Zahlungsfrist", "Beginn",
                "Mietbeginn", "Kaution fällig bis", "Verfahrensfrist", "Referenzdatum"}
     if label in allowed:
@@ -603,14 +604,14 @@ def _sanitize_fristen_label(field: str, label: str) -> str:
 
 
 _LLM_ECKDATEN_NON_FRIST_LABELS: tuple[str, ...] = (
-    # Geburtsdaten
+    # Birth dates
     "geburtsdatum", "geburtstag", "geboren",
-    # Beschäftigungsbeginn / Eintrittsdaten
+    # Employment start / hire dates
     "eintrittsdatum", "eintritt", "beschäftigungsbeginn", "beschaeftigungsbeginn",
     "arbeitsbeginn", "anstellungsdatum",
-    # Gründungs-/Registrierungsdaten
+    # Founding/registration dates
     "gründungsdatum", "gruendungsdatum", "eintragungsdatum", "registrierungsdatum",
-    # Baujahr / historische Daten ohne Handlungsbedarf
+    # Year built / historical dates that require no action
     "baujahr",
 )
 
@@ -689,11 +690,11 @@ def _merge_llm_regex_eckdaten(
 
 
 def _filter_llm_eckdaten(items: list[dict]) -> list[dict]:
-    """FIX 1/3/6: Filtert und dedupliziert llm_eckdaten-Items.
+    """FIX 1/3/6: filters and deduplicates llm_eckdaten items.
 
-    1. Entfernt Items deren Label auf Geburtsdaten/Beschäftigungsbeginn/Gründungsdaten hindeutet.
-    2. Dedupliziert Items mit identischem EUR-Betragswert (FIX 6): bei gleichem Betrag gewinnt
-       der erste Eintrag (LLM-Reihenfolge), folgende Einträge mit demselben Betrag werden entfernt.
+    1. Removes items whose label indicates a birth date/employment start/founding date.
+    2. Deduplicates items with an identical EUR amount value (FIX 6): on a matching
+       amount, the first entry wins (LLM order); later entries with the same amount are removed.
     """
     # Step 1: Filter non-Frist labels
     filtered = []
@@ -728,7 +729,7 @@ def _evidence_line(item: dict, doc_type: str, include_sources: bool = True) -> s
     label = _human_label_for_evidence(field, value, full_quote, doc_type)
     if not label:
         return ""
-    # BLOCKER 1: Fristen-Wert und -Label validieren
+    # BLOCKER 1: validate the deadline value and label
     value = _sanitize_fristen_value(field, value)
     label = _sanitize_fristen_label(field, label)
     if page is None or not include_sources:
@@ -743,7 +744,7 @@ def _akten_evidence_line(item: dict, include_sources: bool = True) -> str:
     quote = _redact_snippet_sensitive(_short_source_excerpt(str(item.get("quote", "") or "")))
     field_key = field.strip().lower()
     label = _SUMMARY_LABELS.get(field_key, field)
-    # BLOCKER 1: Fristen-Wert und -Label validieren
+    # BLOCKER 1: validate the deadline value and label
     value = _sanitize_fristen_value(field, value)
     label = _sanitize_fristen_label(field, label)
     if page is None or not include_sources:
@@ -850,7 +851,7 @@ def render_segmented_summary_text(
     if coverage:
         lines += [_document_meta_line(coverage), ""]
 
-    # Cross-segment Kaution-Guard: alle Kautions-Beträge aus allen Segmenten vorsammeln
+    # Cross-segment deposit guard: pre-collect all deposit amounts across all segments
     known_kaution_amounts = _collect_all_kaution_amounts(list(segment_results or []))
     for idx, seg in enumerate(segment_results or [], start=1):
         meta = seg.get("segment_meta", {}) if isinstance(seg, dict) else {}
@@ -863,7 +864,7 @@ def render_segmented_summary_text(
         start = meta.get("page_start", meta.get("start_page", "?"))
         end = meta.get("page_end", meta.get("end_page", "?"))
         evidence_map = list((seg.get("evidence_map") if isinstance(seg, dict) else None) or [])
-        # Beweismittel aus LLM-Output als Evidence-Items synthetisieren (kein Regex-Pfad)
+        # Synthesize evidence items for "Beweismittel" from LLM output (no regex path)
         if isinstance(parsed, dict):
             for _bm in list(parsed.get("beweismittel", []) or []):
                 if not isinstance(_bm, dict):
@@ -899,7 +900,7 @@ def render_segmented_summary_text(
             "",
             "2. ECKDATEN (BETRÄGE / FRISTEN / TERMINE)",
         ]
-        # FIX 1/4: LLM-eckdaten haben Vorrang; spezifische Regex-Items ergänzen (FIX 4 merge).
+        # FIX 1/4: LLM eckdaten take precedence; specific regex items are merged in (FIX 4 merge).
         llm_eckdaten = _filter_llm_eckdaten(
             list((seg.get("llm_eckdaten") if isinstance(seg, dict) else None) or [])
         )

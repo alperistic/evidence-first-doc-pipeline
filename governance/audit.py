@@ -1,7 +1,7 @@
 """
-audit.py – SQLite Audit Trail
-§203 StGB-konform: Nur Hash, Klasse, Tokenanzahl und Modell werden gespeichert.
-Kein Klartext, kein Dokument.
+audit.py – SQLite audit trail.
+Only the document hash, class, token count, and model are stored.
+No plaintext, no document content, is ever persisted.
 """
 
 import sqlite3
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.execute(_CREATE_TABLE)
-    # Migration: output_type-Spalte für bestehende DBs ergänzen
+    # Migration: add output_type column for existing DBs
     existing = {row[1] for row in conn.execute("PRAGMA table_info(audit_log)")}
     if "output_type" not in existing:
         conn.execute(
@@ -102,7 +102,7 @@ def log_request(
     citation_status: str = "n/a",
     output_json: dict | None = None,
 ) -> None:
-    """Schreibt einen Audit-Eintrag. Wirft keine Exceptions nach außen (fail-safe)."""
+    """Writes an audit entry. Never raises exceptions outward (fail-safe)."""
     try:
         ts = datetime.now(timezone.utc).isoformat()
         output_json_str = json.dumps(output_json or {}, ensure_ascii=False)
@@ -153,13 +153,13 @@ def log_request(
                 ),
             )
     except Exception as exc:
-        # Audit-Fehler dürfen den Hauptfluss nicht unterbrechen
-        _ = exc  # nosec - absichtlich nicht geloggt, um Klartext-Leaks zu vermeiden
+        # Audit failures must never interrupt the main flow
+        _ = exc  # nosec - intentionally not logged, to avoid leaking plaintext
         _log.warning("audit_write_failed", stage="audit", error_type=type(exc).__name__)
 
 
 def get_recent_logs(limit: int = 50) -> list[dict]:
-    """Gibt die letzten Einträge als Liste von Dicts zurück."""
+    """Returns the most recent entries as a list of dicts."""
     try:
         with _connect() as conn:
             cur = conn.execute(

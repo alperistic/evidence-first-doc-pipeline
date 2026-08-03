@@ -1,6 +1,6 @@
 """
-core/party_extractor.py – Partei-Erkennung (Personen, Organisationen)
-Ausgelagert aus core/evidence.py (W2 – Evidence-Split).
+core/party_extractor.py – Party detection (people, organizations)
+Moved out of core/evidence.py (W2 – evidence split).
 """
 
 import re
@@ -15,7 +15,7 @@ from core.snippet import (
 from core.citation import _normalize_item
 
 # ---------------------------------------------------------------------------
-# Konstanten
+# Constants
 # ---------------------------------------------------------------------------
 
 _PARTY_ROLE_HINTS = (
@@ -76,8 +76,8 @@ _ARTIFACT_VALUES = {
     "präambel",
     "praeambel",
 }
-# Dokumenttyp-Bezeichner die NICHT als Parteienname extrahiert werden dürfen.
-# Partei = natürliche oder juristische Person; Dokumenttyp-Header sind keine Parteien.
+# Document-type labels that must NOT be extracted as a party name.
+# Party = natural or legal person; document-type headers are not parties.
 _DOC_TYPE_HEADER_KEYWORDS: frozenset[str] = frozenset({
     "MÄNGELANZEIGE", "MAENGELANZEIGE",
     "KLAGESCHRIFT",
@@ -101,15 +101,15 @@ _ORG_SUFFIX_RE = re.compile(r"\b(gmbh|ug|ag|e\.v\.|kg|ohg)\b", flags=re.IGNORECA
 _PERSON_RE = re.compile(r"\b[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+\b")
 
 # ---------------------------------------------------------------------------
-# Hilfsfunktionen
+# Helper functions
 # ---------------------------------------------------------------------------
 
 
 def _is_doc_type_header(value: str) -> bool:
-    """True wenn der Kandidat ein Dokumenttyp-Bezeichner ist, keine Partei.
+    """True if the candidate is a document-type label, not a party.
 
-    Prüft ob einer der bekannten Dokumenttyp-Header-Terme als ganzes Wort
-    im Wert enthalten ist (Großschreibung egal).
+    Checks whether one of the known document-type header terms is contained
+    as a whole word in the value (case-insensitive).
     """
     v_upper = _normalize_ws(value).upper()
     for kw in _DOC_TYPE_HEADER_KEYWORDS:
@@ -175,7 +175,7 @@ def _is_rhetoric_value(value: str) -> bool:
 
 
 def _extract_party_candidates(line: str) -> list[str]:
-    # Entfernt typische Rollen-/Präambel-Marker und extrahiert nur echte Entitäten.
+    # Removes typical role/preamble markers and extracts only genuine entities.
     stripped = _normalize_ws(line)
     stripped = re.sub(
         r"\b(nachfolgend|arbeitgeber|arbeitnehmer|mieter|vermieter|zwischen|vertragsparteien|präambel)\b",
@@ -210,7 +210,7 @@ def _extract_party_candidates(line: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Partei-Extraktion aus strukturiertem Output / Segmenttext
+# Party extraction from structured output / segment text
 # ---------------------------------------------------------------------------
 
 
@@ -298,12 +298,12 @@ def _collect_structured_party_evidence(parsed: dict[str, Any]) -> list[dict[str,
                 "quote": match["quote"],
             }
         )
-    from core.evidence_map import _dedupe_evidence  # lazy: vermeidet Zirkularimport
+    from core.evidence_map import _dedupe_evidence  # lazy: avoids circular import
     return _dedupe_evidence(evidence)
 
 
 def _collect_regex_party_evidence(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    from core.evidence_map import _dedupe_evidence, _get_page_no  # lazy: vermeidet Zirkularimport
+    from core.evidence_map import _dedupe_evidence, _get_page_no  # lazy: avoids circular import
     evidence: list[dict[str, Any]] = []
     for page in pages:
         page_no = _get_page_no(page)
@@ -333,13 +333,13 @@ def ensure_party_evidence_consistency(
     pages: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """
-    Verhindert parteien=missing, wenn Parteien im strukturierten Output oder im Segmenttext erkennbar sind.
-    Priorität:
-    a) strukturierte Parteien aus LLM-Output (mit Citations)
-    b) regex-basierte Heuristik aus Segmenttext
+    Prevents parteien=missing when parties are identifiable in the structured output or in the segment text.
+    Priority:
+    a) structured parties from LLM output (with citations)
+    b) regex-based heuristic from segment text
     c) missing
     """
-    from core.evidence_map import (  # lazy: vermeidet Zirkularimport
+    from core.evidence_map import (  # lazy: avoids circular import
         _dedupe_evidence,
         _searchable_pages_without_repeating_edges,
         _normalize_evidence_map,

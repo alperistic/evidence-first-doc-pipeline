@@ -1,8 +1,8 @@
-"""core/doctype_classifier.py – Regelbasierte DocType-Klassifikation.
+"""core/doctype_classifier.py – Rule-based document-type classification.
 
-Extrahiert aus core/segmenter.py (W2 God-File-Split).
-Enthält Keyword-Dicts, Prioritätsreihenfolge, Urteil-Gate und
-die öffentlichen Funktionen detect_doctype_by_keywords() und
+Extracted from core/segmenter.py (W2 god-file split).
+Contains keyword dicts, priority order, the "Urteil" (judgment) gate, and
+the public functions detect_doctype_by_keywords() and
 classify_doc_type_with_result().
 """
 
@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass
 
 # ---------------------------------------------------------------------------
-# Keyword-Dicts für score-basierte Heuristik (segment_pages / _keyword_score)
+# Keyword dicts for score-based heuristic (segment_pages / _keyword_score)
 # ---------------------------------------------------------------------------
 
 _DOC_TYPE_KEYWORDS: dict[str, tuple[str, ...]] = {
@@ -43,9 +43,10 @@ _DOC_TYPE_KEYWORDS: dict[str, tuple[str, ...]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Regelbasierte DocType-Erkennungs-Matrix
-# Spezifischere Keywords mit Prioritätsreihenfolge – verhindert Fehlklassifikation
-# z.B. Kündigung → Arbeitsvertrag oder Schreiben → Arbeitsvertrag
+# Rule-based document-type detection matrix.
+# More specific keywords with a priority order – prevents misclassification,
+# e.g. a termination letter (Kündigung) being misread as an employment
+# contract (Arbeitsvertrag), or a generic letter (Schreiben) as such.
 # ---------------------------------------------------------------------------
 
 DOCTYPE_KEYWORDS: dict[str, list[str]] = {
@@ -98,18 +99,18 @@ DOCTYPE_KEYWORDS: dict[str, list[str]] = {
 }
 
 DOCTYPE_PRIORITY: list[str] = [
-    # Spezifischere Typen zuerst – verhindert dass "Schreiben"
-    # einen "Arbeitsvertrag" überschreibt
+    # More specific types first – prevents a generic "Schreiben" (letter)
+    # match from overriding a more specific "Arbeitsvertrag" match
     "urteil",
     "klageschrift",
-    "schriftsatz",  # Fallback für Gerichtsdokumente ohne Urteil-Marker
+    "schriftsatz",  # fallback for court documents without a judgment marker
     "kuendigung",
     "vergleich",
     "mahnung",
     "arbeitsvertrag",
     "mietvertrag",
     "kaufvertrag",
-    "schreiben",  # generischster Typ zuletzt
+    "schreiben",  # most generic type last
 ]
 
 _DOCTYPE_KEY_TO_LABEL: dict[str, str] = {
@@ -126,10 +127,10 @@ _DOCTYPE_KEY_TO_LABEL: dict[str, str] = {
 }
 
 # ---------------------------------------------------------------------------
-# Urteil-Marker-Gate
-# "Urteil" wird nur vergeben wenn ≥ _URTEIL_MIN_HARD_MARKERS dieser Muster
-# im Text gefunden werden. Verhindert Fehlklassifikation bei Briefen/
-# Schriftsätzen, die zufällig das Wort "Urteil" enthalten.
+# "Urteil" (judgment) marker gate.
+# "Urteil" is only assigned if >= _URTEIL_MIN_HARD_MARKERS of these patterns
+# are found in the text. Prevents misclassification of letters/briefs that
+# happen to contain the word "Urteil" incidentally.
 # ---------------------------------------------------------------------------
 _URTEIL_HARD_MARKERS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bim\s+namen\s+des\s+volkes\b", re.IGNORECASE),
@@ -141,28 +142,29 @@ _URTEIL_HARD_MARKERS: tuple[re.Pattern[str], ...] = (
 )
 _URTEIL_MIN_HARD_MARKERS = 2
 
-# Pflicht-Marker (§ 311 ZPO): "Im Namen des Volkes" steht ausschließlich
-# in echten Urteilen – nicht in Schriftsätzen, die auf Urteile verweisen.
-# Muss zusätzlich zum Marker-Count vorhanden sein.
+# Required marker (§ 311 ZPO, German civil procedure code): the phrase
+# "Im Namen des Volkes" ("In the name of the people") appears exclusively
+# in actual judgments – not in briefs that merely reference a judgment.
+# Must be present in addition to the marker count.
 _URTEIL_REQUIRED_MARKER: re.Pattern[str] = _URTEIL_HARD_MARKERS[0]
 
 
 def _count_urteil_hard_markers(text: str) -> int:
-    """Zählt wie viele harte Urteil-Marker im Text vorhanden sind."""
+    """Counts how many hard "Urteil" markers are present in the text."""
     return sum(1 for pat in _URTEIL_HARD_MARKERS if pat.search(text))
 
 
 @dataclass
 class DocTypeResult:
-    """DocType-Klassifikationsergebnis mit Methoden- und Confidence-Flag.
+    """Document-type classification result with method and confidence flag.
 
     method:
-      "keyword_rule" – regelbasierte Erkennung (DOCTYPE_KEYWORDS)
-      "llm"          – score-basierte Heuristik hat Treffer geliefert
-      "fallback"     – kein Treffer, Rückgabe "Unklar"
+      "keyword_rule" – rule-based detection (DOCTYPE_KEYWORDS)
+      "llm"          – score-based heuristic produced a match
+      "fallback"     – no match, returns "Unklar" (unclear)
     confidence:
-      "high" – keyword_rule-Treffer
-      "low"  – llm oder fallback
+      "high" – keyword_rule match
+      "low"  – llm or fallback
     """
 
     doc_type: str
@@ -171,44 +173,45 @@ class DocTypeResult:
 
 
 def detect_doctype_by_keywords(text: str) -> str | None:
-    """Regelbasierte DocType-Erkennung.
+    """Rule-based document-type detection.
 
-    Gibt den DocType-Key zurück (z.B. 'kuendigung') oder None wenn kein Treffer.
-    Priority-Reihenfolge: spezifischster Typ gewinnt.
+    Returns the doc-type key (e.g. 'kuendigung') or None if there is no match.
+    Priority order: the most specific type wins.
 
-    Urteil-Gate: "urteil" wird nur vergeben wenn (a) "Im Namen des Volkes"
-    als Pflicht-Marker vorhanden ist (§ 311 ZPO) UND (b) ≥ _URTEIL_MIN_HARD_MARKERS
-    harte Marker gezählt werden. Schriftsätze, die auf Urteile verweisen,
-    enthalten selten den Pflicht-Marker und werden korrekt weiter klassifiziert.
+    "Urteil" gate: "urteil" is only assigned if (a) "Im Namen des Volkes" is
+    present as the required marker (§ 311 ZPO) AND (b) >= _URTEIL_MIN_HARD_MARKERS
+    hard markers are counted. Briefs that merely reference judgments rarely
+    contain the required marker and are correctly classified further down
+    the priority chain.
     """
     text_lower = text.lower()
     for doctype in DOCTYPE_PRIORITY:
         keywords = DOCTYPE_KEYWORDS.get(doctype, [])
         if any(kw in text_lower for kw in keywords):
             if doctype == "klageschrift":
-                # "klageschrift" allein trifft auf TOC-Einträge wie
-                # "Klageschrift (Entwurf) – Zahlungsklage" – mindestens ein
-                # weiteres spezifisches Keyword muss den Inhalt bestätigen.
+                # "klageschrift" alone also matches TOC entries like
+                # "Klageschrift (Entwurf) – Zahlungsklage" – at least one
+                # additional specific keyword must confirm the content.
                 other_kw = [kw for kw in keywords if kw != "klageschrift"]
                 if not any(kw in text_lower for kw in other_kw):
                     continue
             if doctype == "urteil":
                 if not _URTEIL_REQUIRED_MARKER.search(text):
-                    continue  # Pflicht-Marker fehlt → kein Urteil
+                    continue  # required marker missing → not a judgment
                 if _count_urteil_hard_markers(text) < _URTEIL_MIN_HARD_MARKERS:
-                    continue  # Marker-Gate nicht bestanden → weiter prüfen
+                    continue  # marker gate not passed → keep checking
             return doctype
     return None
 
 
 def _guess_doc_type_from_text(text: str, title_hint: str = "") -> str:
-    """Score-basierte DocType-Heuristik mit Regelvorrang."""
+    """Score-based document-type heuristic, with rule-based detection taking precedence."""
     combined = f"{title_hint}\n{text}"
-    # Regelbasierte Erkennung hat Vorrang vor score-basierter Heuristik
+    # Rule-based detection takes precedence over the score-based heuristic
     detected_key = detect_doctype_by_keywords(combined)
     if detected_key is not None:
         return _DOCTYPE_KEY_TO_LABEL.get(detected_key, detected_key)
-    # Fallback: score-basierte Heuristik (bisheriges Verhalten)
+    # Fallback: score-based heuristic (previous behavior)
     combined_lower = combined.lower()
     scores: dict[str, int] = {}
     for doc_type, keywords in _DOC_TYPE_KEYWORDS.items():
@@ -218,17 +221,17 @@ def _guess_doc_type_from_text(text: str, title_hint: str = "") -> str:
 
 
 def classify_doc_type_with_result(text: str, title_hint: str = "") -> DocTypeResult:
-    """DocType-Klassifikation mit method + confidence Flag.
+    """Document-type classification with method + confidence flag.
 
-    Versucht zuerst regelbasierte Erkennung; bei Treffern confidence='high'.
-    Fällt auf score-basierte Heuristik zurück; confidence='low'.
+    First attempts rule-based detection; on a match confidence='high'.
+    Falls back to the score-based heuristic; confidence='low'.
     """
     combined = f"{title_hint}\n{text}" if title_hint else text
     detected_key = detect_doctype_by_keywords(combined)
     if detected_key is not None:
         label = _DOCTYPE_KEY_TO_LABEL.get(detected_key, detected_key)
         return DocTypeResult(doc_type=label, method="keyword_rule", confidence="high")
-    # Fallback: score-basierte Heuristik
+    # Fallback: score-based heuristic
     doc_type = _guess_doc_type_from_text(text, title_hint=title_hint)
     method = "llm" if doc_type != "Unklar" else "fallback"
     return DocTypeResult(doc_type=doc_type, method=method, confidence="low")

@@ -12,6 +12,6 @@ segment_adaptive_threshold: true
 redact_required: true
 fail_closed: true
 
-# Optional (vorbereitet):
+# Optional (reserved for future use):
 retention_days:
 retain_documents:

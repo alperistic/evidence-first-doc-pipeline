@@ -45,8 +45,8 @@ def _loaded_policy(**overrides) -> LoadedPolicy:
 
 
 def test_runtime_config_fingerprint_tracks_runtime_toggles(monkeypatch):
-    monkeypatch.setenv("LATE_CITATION_VERIFY", "1")
-    monkeypatch.setenv("LATE_MAX_CONCURRENT_SEGMENTS", "4")
+    monkeypatch.setenv("DOCPIPE_CITATION_VERIFY", "1")
+    monkeypatch.setenv("DOCPIPE_MAX_CONCURRENT_SEGMENTS", "4")
     reset_config()
 
     loaded_policy = _loaded_policy()
@@ -72,7 +72,7 @@ def test_runtime_config_fingerprint_tracks_runtime_toggles(monkeypatch):
 
 
 def test_build_segments_passes_effective_policy_settings(monkeypatch):
-    monkeypatch.setenv("LATE_MAX_CONCURRENT_SEGMENTS", "2")
+    monkeypatch.setenv("DOCPIPE_MAX_CONCURRENT_SEGMENTS", "2")
     reset_config()
 
     runtime_config = DocSummaryWorkflow.build_runtime_config(

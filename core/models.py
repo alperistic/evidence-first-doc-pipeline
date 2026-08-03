@@ -1,6 +1,6 @@
-"""core/models.py – Pydantic-Schemas und LLMResult-Dataclass.
+"""core/models.py – Pydantic schemas and the LLMResult dataclass.
 
-Hierhin ausgelagert von llm.py (Phase 1, Schritt 1).
+Moved here from llm.py (Phase 1, Step 1).
 """
 
 import re
@@ -158,7 +158,7 @@ except ModuleNotFoundError:  # pragma: no cover - lightweight fallback for tests
 
 
 # ---------------------------------------------------------------------------
-# Snippet-Hilfsfunktionen (werden von Modell-Validatoren und llm.py genutzt)
+# Snippet helper functions (used by model validators and llm.py)
 # ---------------------------------------------------------------------------
 
 def _normalize_ws(text: str) -> str:
@@ -175,16 +175,16 @@ _DATE_ORDINAL_START_RE = re.compile(
 
 def clean_snippet(text: str, max_chars: int = _SNIPPET_MAX_CHARS) -> str:
     """
-    Bereinigt Snippets für UI/Exports:
-    - entfernt Parser-Artefakte (z. B. führende Seitenzahlen),
-    - normalisiert Whitespaces und Trennstriche,
-    - versucht am Satzanfang zu starten,
-    - clippt ohne abgeschnittene Wortreste.
+    Cleans up snippets for UI/exports:
+    - removes parser artifacts (e.g. leading page numbers),
+    - normalizes whitespace and hyphenation,
+    - tries to start at a sentence boundary,
+    - clips without leaving a truncated word fragment.
     """
     snippet = (text or "").replace("\u00ad", "")
     snippet = re.sub(r"(\w)-\s+(\w)", r"\1\2", snippet)
     snippet = _normalize_ws(snippet)
-    # Kein Stripping wenn Snippet mit Long-Format-Datum beginnt: "14. Februar 2025"
+    # No stripping when the snippet starts with a long-format date: "14. Februar 2025"
     if not _DATE_ORDINAL_START_RE.match(snippet):
         snippet = _LEADING_ARTIFACT_RE.sub("", snippet)
     snippet = re.sub(r"^(?:s(?:eite)?\.?\s*\d+)\s*", "", snippet, flags=re.IGNORECASE)
@@ -206,7 +206,7 @@ def clean_snippet(text: str, max_chars: int = _SNIPPET_MAX_CHARS) -> str:
     if first_boundary and first_boundary.end() < min(len(snippet), 80):
         _prefix = snippet[:first_boundary.start()]
         _suffix_after = snippet[first_boundary.end():]
-        # Nicht springen wenn die Grenze ein Datumsordinal ist: "14. Februar", "31. Januar" usw.
+        # Don't jump ahead when the boundary is a date ordinal: "14. Februar", "31. Januar" etc.
         _is_date_ordinal = bool(re.search(r"\b\d{1,2}$", _prefix)) and bool(re.search(
             r"^(?:januar|februar|m[äa]rz|april|mai|juni|juli|august|september|oktober|november|dezember)\b",
             _suffix_after,
@@ -248,7 +248,7 @@ def _normalize_citations_before(value: Any) -> list[Any]:
 
 
 # ---------------------------------------------------------------------------
-# Pydantic-Modelle
+# Pydantic models
 # ---------------------------------------------------------------------------
 
 class CitationModel(BaseModel):
@@ -568,7 +568,7 @@ class VerifyMappingPayloadModel(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# LLMResult-Dataclass
+# LLMResult dataclass
 # ---------------------------------------------------------------------------
 
 @dataclass

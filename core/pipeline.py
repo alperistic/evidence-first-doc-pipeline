@@ -1,6 +1,6 @@
-"""core/pipeline.py – Orchestrierungs- und Hilfslogik für die Dokumenten-Analyse-Pipeline.
+"""core/pipeline.py - Orchestration and helper logic for the document analysis pipeline.
 
-Kein streamlit-Import. Wird von app.py als reiner Logik-Layer verwendet.
+No streamlit import. Used by app.py as a pure logic layer.
 """
 
 import re
@@ -39,7 +39,7 @@ from core.utils import (
 )
 
 # ---------------------------------------------------------------------------
-# Regex-Konstanten
+# Regex constants
 # ---------------------------------------------------------------------------
 _INTERNAL_EXPORT_PLACEHOLDER_RE = re.compile(
     r"\[(?:DICT|PERSON|ADDR|EMAIL|IBAN|PARTEI|AKTENZEICHEN|PHONE|TAXID|FIRMA)_[0-9]+\]"
@@ -61,7 +61,7 @@ _DEADLINE_FACT_TRIGGER_RE = re.compile(
 )
 
 # ---------------------------------------------------------------------------
-# Hilfsfunktionen
+# Helper functions
 # ---------------------------------------------------------------------------
 
 def _segment_text_for_analysis(pages: list[dict[str, Any]]) -> str:
@@ -197,7 +197,7 @@ def _apply_reverse_mapping(text: str, reverse_mapping: list[tuple[str, str]]) ->
 
 
 # ---------------------------------------------------------------------------
-# Pipeline-Funktionen
+# Pipeline functions
 # ---------------------------------------------------------------------------
 
 def _build_coverage_metrics(
@@ -253,17 +253,17 @@ def _error_segment_result(
     citation_verify_mode: str,
     timings_ms: dict[str, int],
 ) -> dict:
-    """Minimales, valides Segment-Ergebnis wenn analyze_document() unerwartet wirft.
+    """Minimal, valid segment result when analyze_document() raises unexpectedly.
 
-    Verhindert, dass ein einzelner LLM-Fehler die gesamte Multi-Segment-Analyse abbricht.
-    analysis_output_type wird auf "api_error" gesetzt damit die UI den Fehler anzeigen kann.
-    Kein Klartext des Fehlers im Payload (§203-konform).
+    Prevents a single LLM failure from aborting the entire multi-segment analysis.
+    analysis_output_type is set to "api_error" so the UI can surface the failure.
+    The payload contains no plaintext of the underlying error - only its repr().
     """
     empty_payload: dict[str, Any] = {
-        # Leer lassen: Das LLM hat nicht geantwortet, daher darf kein
-        # llm_doc_class_guess im Audit emittiert werden. resolve_doc_class_fields()
-        # liest document_type via llm_doc_class_guess_from_payload() – ein
-        # nicht-leerer Wert hier würde einen falschen Guess ins Audit schreiben.
+        # Leave empty: the LLM did not respond, so no llm_doc_class_guess must be
+        # emitted into the audit. resolve_doc_class_fields() reads document_type via
+        # llm_doc_class_guess_from_payload() - a non-empty value here would write a
+        # false guess into the audit.
         "document_type": "",
         "kurzueberblick": "[Analysefehler: LLM nicht erreichbar]",
         "kernaussagen": [],
@@ -354,7 +354,7 @@ def _find_internal_export_placeholder_hits(payload: dict[str, Any]) -> list[str]
 
 def _inject_pseudonym_party_evidence(evidence_map: list[dict], pages_for_llm: list[dict]) -> list[dict]:
     """
-    Ergänzt Parteien-Evidence aus Rollen + Pseudonymen, damit Parteien nicht als missing erscheinen.
+    Adds party evidence from roles + pseudonyms so parties don't show up as missing.
     """
     merged = list(evidence_map or [])
     seen = {
@@ -820,11 +820,11 @@ def _prepare_pages_for_llm(
 
 
 # ---------------------------------------------------------------------------
-# Post-Processing: Aktenvermerk-Felder bereinigen
+# Post-processing: clean up aktenvermerk fields
 # ---------------------------------------------------------------------------
 
 def _normalize_for_filter(text: str) -> str:
-    """Lowercase + Whitespace kollabieren + Interpunktion entfernen."""
+    """Lowercase + collapse whitespace + strip punctuation."""
     t = text.lower().strip()
     t = re.sub(r"[^\w\s]", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
@@ -832,7 +832,7 @@ def _normalize_for_filter(text: str) -> str:
 
 
 def _text_similarity(a: str, b: str) -> float:
-    """SequenceMatcher-Ratio auf normalisierten Texten."""
+    """SequenceMatcher ratio on normalized texts."""
     na, nb = _normalize_for_filter(a), _normalize_for_filter(b)
     if not na or not nb:
         return 0.0
@@ -840,13 +840,13 @@ def _text_similarity(a: str, b: str) -> float:
 
 
 def _filter_akten_sections(akten_payload: dict) -> dict:
-    """Bereinigt widersprueche, fehlende_angaben nach LLM-Call (3 Filter).
+    """Cleans up widersprueche and fehlende_angaben after the LLM call (3 filters).
 
-    Filter 1 – Dedupe innerhalb jedes Feldes (>85 % Ähnlichkeit → erster Eintrag gewinnt).
-    Filter 2 – Kreuz-Dedupe gegen kernaussagen (>80 % → entfernen).
-    Filter 3 – fehlende_angaben gegen widersprueche (textidentisch → aus fehlende_angaben entfernen).
+    Filter 1 - dedupe within each field (>85% similarity -> first entry wins).
+    Filter 2 - cross-dedupe against kernaussagen (>80% -> remove).
+    Filter 3 - fehlende_angaben against widersprueche (identical text -> remove from fehlende_angaben).
 
-    Ändert das Original-Dict NICHT; gibt eine Shallow-Copy zurück.
+    Does NOT mutate the original dict; returns a shallow copy.
     """
     out = dict(akten_payload)
 
@@ -862,10 +862,10 @@ def _filter_akten_sections(akten_payload: dict) -> dict:
         text = str(item.get("text", "") or "") if isinstance(item, dict) else str(item)
         if not text.strip():
             continue
-        # Filter 1: Dedupe gegen bereits akzeptierte widersprueche
+        # Filter 1: dedupe against already-accepted widersprueche
         if any(_text_similarity(text, str(c.get("text", "") or "")) > 0.60 for c in clean_w):
             continue
-        # Filter 2: Kreuz-Dedupe gegen kernaussagen
+        # Filter 2: cross-dedupe against kernaussagen
         if any(_text_similarity(text, k) > 0.80 for k in kern_texts if k.strip()):
             continue
         clean_w.append(item if isinstance(item, dict) else {"text": text, "citations": []})
@@ -878,15 +878,15 @@ def _filter_akten_sections(akten_payload: dict) -> dict:
         text = str(raw).strip()
         if not text:
             continue
-        # Filter 1: Dedupe gegen bereits akzeptierte fehlende_angaben
+        # Filter 1: dedupe against already-accepted fehlende_angaben
         if any(_text_similarity(text, c) > 0.60 for c in clean_f):
             continue
-        # Filter 2: Kreuz-Dedupe gegen kernaussagen
+        # Filter 2: cross-dedupe against kernaussagen
         if any(_text_similarity(text, k) > 0.80 for k in kern_texts if k.strip()):
             continue
         clean_f.append(text)
 
-    # --- Filter 3: fehlende_angaben gegen widersprueche (textidentisch) ---
+    # --- Filter 3: fehlende_angaben against widersprueche (identical text) ---
     w_texts = [str(c.get("text", "") or "") for c in clean_w]
     clean_f = [
         f for f in clean_f
@@ -897,7 +897,7 @@ def _filter_akten_sections(akten_payload: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Kern-Orchestrierung: _process_segment
+# Core orchestration: _process_segment
 # ---------------------------------------------------------------------------
 
 def _process_segment(
@@ -938,10 +938,10 @@ def _process_segment(
     rubrum_source_text = _segment_text_for_analysis(seg_pages_source)
     _log.info("segment_size", stage="pipeline", chars=len(segment_text))
 
-    # Beide LLM-Calls parallel starten – beide sind I/O-bound (HTTP) und
-    # unabhängig voneinander (gleicher Input: segment_text). GIL ist kein
-    # Hindernis. generate_aktenvermerk hängt nicht vom Ergebnis von
-    # analyze_document ab, daher echte Parallelität möglich.
+    # Start both LLM calls in parallel - both are I/O-bound (HTTP) and
+    # independent of each other (same input: segment_text). The GIL is not
+    # an obstacle here. generate_aktenvermerk does not depend on the result
+    # of analyze_document, so true parallelism is possible.
     _parallel_started = perf_counter()
 
     def _call_structure() -> tuple:
@@ -984,12 +984,12 @@ def _process_segment(
 
     if _structure_exc is not None:
         exc = _structure_exc
-        # Konfigurationsfehler (EnvironmentError, ModuleNotFoundError) und
-        # Laufzeit-Verletzungen (RuntimeError) sind permanent – kein Segment-
-        # Retry wird helfen. Re-raise damit der Aufrufer den echten Fehler sieht
-        # statt eines stummen "api_error"-Fallbacks.
-        # Nur transiente LLM-Fehler (Timeout, Rate-Limit, temporäre API-Störung)
-        # dürfen hier abgefangen und als Soft-Fallback behandelt werden.
+        # Configuration errors (EnvironmentError, ModuleNotFoundError) and
+        # runtime violations (RuntimeError) are permanent - no per-segment
+        # retry will help. Re-raise so the caller sees the real error instead
+        # of a silent "api_error" fallback.
+        # Only transient LLM errors (timeout, rate limit, temporary API outage)
+        # may be caught here and handled as a soft fallback.
         if isinstance(exc, (EnvironmentError, ModuleNotFoundError, RuntimeError)):
             raise exc
         _log.error("analyze_document_failed", stage="pipeline", doc_class=segment_doc_class, error=repr(exc))
@@ -1086,30 +1086,30 @@ def _process_segment(
         analysis_payload=analysis_payload,
     )
 
-    # Aktenvermerk: Ergebnis aus dem parallelen Call auswerten und mergen.
-    # Felder werden in analysis_payload gemergt, damit _to_legacy_segment_analysis sie aufnimmt.
+    # Aktenvermerk: evaluate and merge the result from the parallel call.
+    # Fields are merged into analysis_payload so _to_legacy_segment_analysis picks them up.
     if _akten_exc is not None:
         _log.warning("aktenvermerk_failed", stage="pipeline", error=repr(_akten_exc))
-        # Fail-open: Aktenvermerk-Fehler blockieren nicht den Haupt-Export
+        # Fail-open: aktenvermerk errors do not block the main export
     elif akten_result is not None and akten_result.output_type == "json_ok" and isinstance(akten_result.parsed, dict):
         akten_payload = _filter_akten_sections(akten_result.parsed)
-        # widersprueche (gefiltert) für _to_legacy_segment_analysis durchreichen
+        # Pass the filtered widersprueche through for _to_legacy_segment_analysis
         analysis_payload["widersprueche_akten"] = list(akten_payload.get("widersprueche") or [])
-        # todos: merge mit LLM-todos aus analyze_document
+        # todos: merge with the LLM todos from analyze_document
         akten_todos = [
             str(x).strip() for x in list(akten_payload.get("todos") or []) if str(x).strip()
         ]
         existing_todos = list(analysis_payload.get("todos") or [])
         analysis_payload["todos"] = _dedupe_str_list(existing_todos + akten_todos, limit=10)
-        # fehlende_angaben → merge in uncertainties (→ missing_info im Legacy-Dict)
-        # Gefilterte Liste separat speichern für prueffragen-Generierung
+        # fehlende_angaben -> merge into uncertainties (-> missing_info in the legacy dict)
+        # Store the filtered list separately for prueffragen generation
         akten_offene = [
             str(x).strip() for x in list(akten_payload.get("fehlende_angaben") or []) if str(x).strip()
         ]
         analysis_payload["fehlende_angaben_akten"] = akten_offene
         existing_unc = list(analysis_payload.get("uncertainties") or [])
         analysis_payload["uncertainties"] = _dedupe_str_list(existing_unc + akten_offene, limit=25)
-        # fristen_termine → als TextItems in dates mergen
+        # fristen_termine -> merge as TextItems into dates
         for frist in list(akten_payload.get("fristen_termine") or []):
             frist_text = str((frist or {}).get("text", "")).strip() if isinstance(frist, dict) else str(frist).strip()
             if not frist_text:
@@ -1119,8 +1119,8 @@ def _process_segment(
                 "text": frist_text,
                 "citations": list((frist or {}).get("citations", []) or []) if isinstance(frist, dict) else [],
             })
-        # FIX 1: eckdaten → LLM-extrahierte Beträge/Termine mit korrekten Labels
-        # Validierte Items: label + wert müssen vorhanden sein
+        # FIX 1: eckdaten -> LLM-extracted amounts/dates with correct labels
+        # Validated items: label + wert must be present
         _raw_eckdaten = list(akten_payload.get("eckdaten") or [])
         analysis_payload["llm_eckdaten"] = [
             {
@@ -1155,7 +1155,7 @@ def _process_segment(
     citation_summary["citation_verify_mode"] = citation_verify_mode
     legacy_analysis["chunks_sent"] = chunks_sent
     legacy_analysis["citation_status"] = citation_summary["citation_status"]
-    # Verify-Fehler hat Vorrang vor summarize_citation_verification-Default ("unverified")
+    # A verify error takes precedence over the summarize_citation_verification default ("unverified")
     if analysis_payload.get("citation_status") == "verify_failed":
         legacy_analysis["citation_status"] = "verify_failed"
     legacy_analysis["citation_metrics"] = citation_summary["citation_metrics"]
@@ -1175,7 +1175,7 @@ def _process_segment(
     restored_analysis = restore_payload_from_llm(legacy_analysis, context_mapping)
     restored_evidence_map = restore_payload_from_llm(evidence_map, context_mapping)
     restored_raw_analysis = restore_payload_from_llm(analysis_payload, context_mapping)
-    # FIX 1: LLM-eckdaten mit Redaction-Restore durchreichen
+    # FIX 1: pass LLM eckdaten through with redaction restore applied
     _llm_eckdaten_raw = list(analysis_payload.get("llm_eckdaten") or [])
     restored_llm_eckdaten = restore_payload_from_llm(_llm_eckdaten_raw, context_mapping)
 

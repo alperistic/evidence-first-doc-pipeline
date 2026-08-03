@@ -1,9 +1,9 @@
 """
-ui/result_renderer.py – Haupt-Ergebnis-Rendering für LATE.
+ui/result_renderer.py – Main result rendering for the document analysis pipeline.
 
-render_results() kapselt den gesamten Ergebnis-Block (Coverage, Segment-Expander,
-Human-in-the-Loop-Hinweis, Redaction-Summary, Export-Buttons), der zuvor in app.py stand.
-Nur Streamlit-Rendering – keine Business-Logik.
+render_results() encapsulates the entire result block (coverage, segment
+expanders, human-in-the-loop notice, redaction summary, export buttons)
+that previously lived in app.py. Streamlit rendering only - no business logic.
 """
 
 import streamlit as st
@@ -51,7 +51,7 @@ def render_results(
     debug_mode: bool,
     redact_required: bool = True,
 ) -> None:
-    """Rendert den vollständigen Ergebnis-Block nach der Segmentanalyse."""
+    """Renders the full result block after segment analysis."""
 
     citation_verify_mode = coverage.get("citation_verify_mode", "disabled")
     claim_verified_pct = int(coverage.get("claim_verified_pct", 0))
@@ -63,13 +63,13 @@ def render_results(
     )
 
     # -----------------------------------------------------------------------
-    # Coverage-Anzeige
+    # Coverage display
     # -----------------------------------------------------------------------
     if citation_verify_mode == "disabled" or checks_ran == 0:
         st.info(
-            f"Coverage: {coverage['pages_total']} Seiten total | "
-            f"{coverage['pages_extracted']} extrahiert | "
-            f"{coverage['chunks_sent']} Chunks | {len(segment_results)} Segmente | "
+            f"Coverage: {coverage['pages_total']} pages total | "
+            f"{coverage['pages_extracted']} extracted | "
+            f"{coverage['chunks_sent']} chunks | {len(segment_results)} segments | "
             f"claim-verified: n/a (verification disabled) | "
             f"presence-verified: n/a (verification disabled) | "
             f"citation_check_ran: false ({checks_ran}/{len(segment_results)}) | "
@@ -77,9 +77,9 @@ def render_results(
         )
     else:
         st.info(
-            f"Coverage: {coverage['pages_total']} Seiten total | "
-            f"{coverage['pages_extracted']} extrahiert | "
-            f"{coverage['chunks_sent']} Chunks | {len(segment_results)} Segmente | "
+            f"Coverage: {coverage['pages_total']} pages total | "
+            f"{coverage['pages_extracted']} extracted | "
+            f"{coverage['chunks_sent']} chunks | {len(segment_results)} segments | "
             f"{claim_verified_pct}% claim-verified | {presence_verified_pct}% presence-verified | "
             f"citation_check_ran: {str(checks_ran > 0).lower()} ({checks_ran}/{len(segment_results)}) | "
             f"mode: {citation_verify_mode}"
@@ -89,7 +89,7 @@ def render_results(
         or coverage["chars_total"] < max(500, coverage["pages_total"] * 80)
     ):
         st.warning(
-            "WARNUNG: Nur Teil des Dokuments wurde verarbeitet. Ergebnisse sind unvollständig.",
+            "WARNING: only part of the document was processed. Results are incomplete.",
             icon="⚠️",
         )
     if debug_mode:
@@ -99,13 +99,13 @@ def render_results(
             f"chunks_sent={coverage['chunks_sent']}"
         )
 
-    st.success("Segmentanalyse abgeschlossen – ohne Vermischung über Dokumentgrenzen.")
-    st.subheader("Segmentierte Ergebnisse (einheitliche Struktur)")
+    st.success("Segment analysis complete - no mixing across document boundaries.")
+    st.subheader("Segmented results (unified structure)")
     if is_short_doc:
-        st.caption("Kurzmodus aktiv: Fokus auf Metadaten, Evidence Map und neutrale Zusammenfassung.")
+        st.caption("Short-document mode active: focus on metadata, evidence map, and neutral summary.")
 
     # -----------------------------------------------------------------------
-    # Segment-Expander-Loop
+    # Segment expander loop
     # -----------------------------------------------------------------------
     known_kaution_amounts = _collect_all_kaution_amounts(segment_results)
     for idx, seg in enumerate(segment_results, start=1):
@@ -114,8 +114,8 @@ def render_results(
         analysis_raw = seg.get("analysis_raw", {})
         evidence_map = seg.get("evidence_map", [])
         seg_cov = seg.get("coverage", {})
-        title = meta.get("title_guess") or "Dokumentsegment"
-        doc_type_guess = meta.get("doc_type_guess") or title or "Unklar"
+        title = meta.get("title_guess") or "Document segment"
+        doc_type_guess = meta.get("doc_type_guess") or title or "Unclear"
         display_doc_type, display_doc_type_source = resolve_segment_header_document_type(
             segment=meta if isinstance(meta, dict) else {},
             analysis_payload=analysis_raw if isinstance(analysis_raw, dict) else {},
@@ -123,50 +123,50 @@ def render_results(
         start_page = meta.get("page_start", meta.get("start_page", "?"))
         end_page = meta.get("page_end", meta.get("end_page", "?"))
         confidence = meta.get("confidence", 0.0)
-        reason = meta.get("reason", "Heuristische Segmentierung")
+        reason = meta.get("reason", "Heuristic segmentation")
 
         with st.expander(
-            f"Dokument {idx} (Seite {start_page}-{end_page}): {display_doc_type}",
+            f"Document {idx} (page {start_page}-{end_page}): {display_doc_type}",
             expanded=(idx == 1),
         ):
             if not isinstance(analysis, dict) or seg.get("analysis_output_type") != "json_ok":
-                st.warning("Segment-Ergebnis konnte nicht strukturiert erzeugt werden.")
+                st.warning("Segment result could not be generated in structured form.")
                 continue
 
-            st.markdown("**1) Dokument-Metadaten**")
+            st.markdown("**1) Document metadata**")
             segment_guess_display = (
                 doc_type_guess
                 if normalize_doc_class(doc_type_guess) != "Unklar"
-                else "aus Segment nicht eindeutig"
+                else "not clear from segment"
             )
             st.caption(
-                f"Doc-Typ (Segment-Guess): {segment_guess_display} | "
-                f"Doc-Typ (Anzeige): {display_doc_type} | "
-                f"Doc-Typ (Quelle): {display_doc_type_source} | "
-                f"Doc-Typ (Extraktion): {_safe_text(str(analysis.get('dokumenttyp_parteien', '')))} | "
-                f"Segment-Seitenrange: {start_page}-{end_page} | "
-                f"Confidence: {confidence:.2f} | Citation-Status: {analysis.get('citation_status', 'n/a')}"
+                f"Doc type (segment guess): {segment_guess_display} | "
+                f"Doc type (display): {display_doc_type} | "
+                f"Doc type (source): {display_doc_type_source} | "
+                f"Doc type (extraction): {_safe_text(str(analysis.get('dokumenttyp_parteien', '')))} | "
+                f"Segment page range: {start_page}-{end_page} | "
+                f"Confidence: {confidence:.2f} | Citation status: {analysis.get('citation_status', 'n/a')}"
             )
-            st.caption(f"Heuristik: {reason}")
+            st.caption(f"Heuristic: {reason}")
             if debug_mode:
                 boundary_score = meta.get("boundary_score")
                 boundary_reasons = [str(r) for r in list(meta.get("boundary_reasons", []) or [])]
                 if boundary_score is not None:
-                    st.caption(f"Boundary-Score: {float(boundary_score):.2f}")
+                    st.caption(f"Boundary score: {float(boundary_score):.2f}")
                 if boundary_reasons:
-                    st.caption(f"Boundary-Reasons: {' | '.join(boundary_reasons[:6])}")
+                    st.caption(f"Boundary reasons: {' | '.join(boundary_reasons[:6])}")
             st.caption(
-                f"Coverage Segment: {seg_cov.get('pages_total', 0)} Seiten | {seg_cov.get('chunks_sent', 0)} Chunks"
+                f"Segment coverage: {seg_cov.get('pages_total', 0)} pages | {seg_cov.get('chunks_sent', 0)} chunks"
             )
 
             summary_tab, aktennotiz_tab, evidence_tab = st.tabs(
-                ["Zusammenfassung", "Aktennotiz (intern)", "Belege / Evidence"]
+                ["Summary", "Internal note", "Evidence"]
             )
             with summary_tab:
-                st.markdown("**Zusammenfassung (neutral)**")
-                st.markdown("**Dokumenttyp + Parteien (nur belegte Fakten)**")
+                st.markdown("**Summary (neutral)**")
+                st.markdown("**Document type + parties (verified facts only)**")
                 st.markdown(
-                    f"– Dokumenttyp: {_safe_text(extract_document_type_for_render(analysis))}"
+                    f"- Document type: {_safe_text(extract_document_type_for_render(analysis))}"
                 )
                 doc_type = _summary_doc_type_key(
                     str(analysis.get("dokumenttyp_parteien", "") or ""),
@@ -179,9 +179,9 @@ def render_results(
                 )
                 if structured_parties:
                     for party in structured_parties:
-                        role = _safe_text(str(party.get("role", "Partei") or "Partei"))
+                        role = _safe_text(str(party.get("role", "Party") or "Party"))
                         value = _safe_text(str(party.get("value", "") or ""))
-                        st.markdown(f"– {role}: {value}")
+                        st.markdown(f"- {role}: {value}")
                         citations = [
                             dict(c)
                             for c in list(party.get("citations", []) or [])
@@ -194,12 +194,12 @@ def render_results(
                                 _clean_quote(str(citation.get("quote_snippet", "") or ""))
                             )
                             if quote:
-                                st.markdown(f"  Quelle S. {page}: {quote}")
+                                st.markdown(f"  Source p. {page}: {quote}")
                 else:
-                    st.markdown("– nicht genannt")
+                    st.markdown("- not stated")
 
-                st.markdown("**Eckdaten (Beträge / Fristen / Termine)**")
-                # FIX 1/4: LLM-eckdaten haben Vorrang; spezifische Regex-Items ergänzen (FIX 4 merge).
+                st.markdown("**Key facts (amounts / deadlines / dates)**")
+                # LLM-derived key facts take precedence; specific regex items are merged in as a supplement.
                 llm_eckdaten = _filter_llm_eckdaten(list(seg.get("llm_eckdaten") or []))
                 _regex_ev_fields = (
                     "betraege", "fristen_termine", "datum_beginn", "kuendigung_fristen",
@@ -212,7 +212,7 @@ def render_results(
                         label = _safe_text(str(item.get("label", "") or ""))
                         wert = _safe_text(str(item.get("wert", "") or ""))
                         if label and wert:
-                            st.markdown(f"– {label}: {wert}")
+                            st.markdown(f"- {label}: {wert}")
                 else:
                     eckdaten = _dedupe_summary_items(
                         _postprocess_eckdaten_items(
@@ -225,21 +225,21 @@ def render_results(
                         for item in eckdaten:
                             st.markdown(_format_summary_evidence_line(item, doc_type))
                     else:
-                        st.markdown("– missing (Rückfrage erforderlich)")
+                        st.markdown("- missing (follow-up required)")
 
-                st.markdown("**Kurzüberblick (max. 7 Bulletpoints, nur belegte Fakten)**")
+                st.markdown("**Overview (max. 7 bullet points, verified facts only)**")
                 verified_overview = _verified_claims(
                     list(analysis.get("kernaussagen", [])), max_items=7
                 )
                 if verified_overview:
                     _render_claim_items(verified_overview, max_items=7)
                 else:
-                    st.markdown("– missing (Rückfrage erforderlich)")
+                    st.markdown("- missing (follow-up required)")
 
-                st.markdown("**Unklarheiten im Dokument**")
+                st.markdown("**Open questions in the document**")
                 unclear_rendered = False
                 for item in list(analysis.get("missing_info", []))[:10]:
-                    st.markdown(f"– {item}")
+                    st.markdown(f"- {item}")
                     unclear_rendered = True
                 for raw in list(analysis.get("auffaelligkeiten", []))[:10]:
                     a_item = _normalize_item(raw)
@@ -252,75 +252,84 @@ def render_results(
                         continue
                     text = str(a_item.get("text", "")).strip()
                     if text:
-                        st.markdown(f"– {text}")
+                        st.markdown(f"- {text}")
                         unclear_rendered = True
                 if not unclear_rendered:
-                    st.markdown("– keine")
+                    st.markdown("- none")
 
             with aktennotiz_tab:
                 if is_short_doc:
-                    with st.expander("Aktennotiz (intern) (optional)", expanded=False):
+                    with st.expander("Internal note (optional)", expanded=False):
                         _render_aktenvermerk_block(analysis, evidence_map, show_title=False)
                 else:
                     _render_aktenvermerk_block(analysis, evidence_map, show_title=True)
 
             with evidence_tab:
-                st.markdown("**Evidence Map (Tabelle)**")
+                st.markdown("**Evidence map (table)**")
                 _render_evidence_map(evidence_map)
 
     # -----------------------------------------------------------------------
-    # Human-in-the-Loop-Hinweis
+    # Human-in-the-loop notice
     # -----------------------------------------------------------------------
     st.info(
-        "**Human-in-the-Loop:** Diese Zusammenfassung ist ein KI-generierter Vorschlag. "
-        "Alle Angaben sind anwaltlich zu verifizieren, bevor Maßnahmen ergriffen werden."
+        "**Human-in-the-loop:** this summary is an AI-generated suggestion. "
+        "All statements should be verified by a qualified professional before any action is taken."
     )
 
     # -----------------------------------------------------------------------
-    # Redaction-Summary
+    # Redaction summary
     # -----------------------------------------------------------------------
-    with st.expander("Redaction-Summary", expanded=False):
+    with st.expander("Redaction summary", expanded=False):
         dict_masks = list((dictionary_report or {}).get("matched_masks", []))
         dict_counts = dict((dictionary_report or {}).get("mask_counts", {}) or {})
         dict_entity_hits = int((dictionary_report or {}).get("matched_entities_count", 0))
         if dict_entity_hits > 0:
-            st.caption(f"{dict_entity_hits} Entities zusätzlich maskiert:")
+            st.caption(f"{dict_entity_hits} additional entities masked:")
             st.table(
-                [{"Maskierung": mask, "Anzahl": dict_counts.get(mask, 0)} for mask in dict_masks]
+                [{"Mask": mask, "Count": dict_counts.get(mask, 0)} for mask in dict_masks]
             )
         elif dictionary_entities:
-            st.caption("Keine zusätzlichen Dictionary-Entity-Treffer.")
+            st.caption("No additional dictionary-entity matches.")
 
         red_summary = _build_redaction_summary(redaction_stats.get("mask_counts"))
         if red_summary:
-            st.caption("Vor LLM-Übertragung maskierte Muster:")
+            st.caption("Patterns masked before LLM transmission:")
             st.table(
                 [
-                    {"Maskierung": label, "Anzahl": count}
+                    {"Mask": label, "Count": count}
                     for label, count in red_summary.items()
                 ]
             )
             placeholders = list(redaction_stats.get("placeholder_keys") or [])
             if placeholders:
-                st.caption("Platzhalter-Keys:")
+                st.caption("Placeholder keys:")
                 st.code(", ".join(placeholders), language=None)
             mask_types = dict(redaction_stats.get("mask_types") or {})
             if mask_types:
                 st.caption("Mask types (counts):")
-                st.table([{"Typ": k, "Anzahl": v} for k, v in mask_types.items()])
+                st.table([{"Type": k, "Count": v} for k, v in mask_types.items()])
         else:
-            st.caption("Keine Maskierungen erkannt.")
+            st.caption("No masks detected.")
 
     # -----------------------------------------------------------------------
-    # Export-Buttons
+    # Export buttons
     # -----------------------------------------------------------------------
     st.subheader("Export")
-    filename_stem = f"LATE_Segmente_{doc_hash[:8]}"
+    filename_stem = f"Segments_{doc_hash[:8]}"
+    # NOTE: these three option values ("Zusammenfassung", "Aktennotiz", "Beides")
+    # are a string-based contract consumed by core.export_content.build_export_content()
+    # and asserted directly in tests - they are data, not just display labels, so
+    # they are intentionally left untranslated. The button labels below are English.
     export_selection = st.radio(
-        "Export-Inhalt",
+        "Export content",
         options=["Zusammenfassung", "Aktennotiz", "Beides"],
         index=2,
         horizontal=True,
+        format_func=lambda v: {
+            "Zusammenfassung": "Summary",
+            "Aktennotiz": "Internal note",
+            "Beides": "Both",
+        }.get(v, v),
     )
     try:
         exports = build_exports(
@@ -333,44 +342,44 @@ def render_results(
         )
     except RedactionLeakError as e:
         st.error(
-            f"⚠️ Export gesperrt: Redaction unvollständig ({e.leak_count} Treffer). "
-            f"Dokument wird nicht ausgegeben. Bitte Support kontaktieren."
+            f"⚠️ Export blocked: redaction incomplete ({e.leak_count} matches). "
+            f"Document will not be produced. Please contact support."
         )
         st.stop()
 
     internal_content_suffix = {
-        "Zusammenfassung": "Zusammenfassung",
-        "Aktennotiz": "Aktennotiz",
-        "Beides": "Beides",
+        "Zusammenfassung": "Summary",
+        "Aktennotiz": "InternalNote",
+        "Beides": "Both",
     }[export_selection]
-    external_content_suffix = "Zusammenfassung"
+    external_content_suffix = "Summary"
 
     pdf_col_internal, pdf_col_external = st.columns(2)
     with pdf_col_internal:
         st.download_button(
-            label="PDF – Kanzleiakte (intern, Klartext)",
+            label="PDF - Internal version (unredacted)",
             data=exports.internal_pdf_bytes,
-            file_name=f"{filename_stem}_Kanzleiakte_{internal_content_suffix}.pdf",
+            file_name=f"{filename_stem}_Internal_{internal_content_suffix}.pdf",
             mime="application/pdf",
             use_container_width=True,
         )
     with pdf_col_external:
         external_pdf_clicked = st.download_button(
-            label="PDF – Mandantenfassung (redigiert)",
+            label="PDF - External version (redacted)",
             data=exports.external_pdf_bytes,
-            file_name=f"{filename_stem}_Mandantenfassung_redigiert_{external_content_suffix}.pdf",
+            file_name=f"{filename_stem}_External_redacted_{external_content_suffix}.pdf",
             mime="application/pdf",
             use_container_width=True,
         )
         if external_pdf_clicked and export_selection != "Zusammenfassung":
-            st.info("Für Mandantenfassung wird nur die Zusammenfassung exportiert.")
+            st.info("For the external version, only the summary is exported.")
 
     docx_col_internal, docx_col_external = st.columns(2)
     with docx_col_internal:
         st.download_button(
-            label="DOCX – Kanzleiakte (intern, Klartext)",
+            label="DOCX - Internal version (unredacted)",
             data=exports.internal_docx_bytes,
-            file_name=f"{filename_stem}_Kanzleiakte_{internal_content_suffix}.docx",
+            file_name=f"{filename_stem}_Internal_{internal_content_suffix}.docx",
             mime=(
                 "application/vnd.openxmlformats-officedocument"
                 ".wordprocessingml.document"
@@ -379,9 +388,9 @@ def render_results(
         )
     with docx_col_external:
         external_docx_clicked = st.download_button(
-            label="DOCX – Mandantenfassung (redigiert)",
+            label="DOCX - External version (redacted)",
             data=exports.external_docx_bytes,
-            file_name=f"{filename_stem}_Mandantenfassung_redigiert_{external_content_suffix}.docx",
+            file_name=f"{filename_stem}_External_redacted_{external_content_suffix}.docx",
             mime=(
                 "application/vnd.openxmlformats-officedocument"
                 ".wordprocessingml.document"
@@ -389,11 +398,11 @@ def render_results(
             use_container_width=True,
         )
         if external_docx_clicked and export_selection != "Zusammenfassung":
-            st.info("Für Mandantenfassung wird nur die Zusammenfassung exportiert.")
+            st.info("For the external version, only the summary is exported.")
 
     if exports.internal_placeholder_hits:
         hit_preview = ", ".join(exports.internal_placeholder_hits[:8])
         st.warning(
-            f"Hinweis: {len(exports.internal_placeholder_hits)} Platzhalter konnten nicht restauriert werden: "
+            f"Note: {len(exports.internal_placeholder_hits)} placeholders could not be restored: "
             f"{hit_preview}"
         )

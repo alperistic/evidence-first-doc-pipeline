@@ -50,7 +50,7 @@ class TestRunSegmentAnalysis:
 
     @patch("services.analysis_service.DocSummaryWorkflow.process_segment", side_effect=_fake_process_segment)
     def test_single_segment_runs_sequentially(self, mock_ps, monkeypatch):
-        monkeypatch.setenv("LATE_MAX_CONCURRENT_SEGMENTS", "3")
+        monkeypatch.setenv("DOCPIPE_MAX_CONCURRENT_SEGMENTS", "3")
         reset_config()
         from services.analysis_service import run_segment_analysis
 
@@ -62,7 +62,7 @@ class TestRunSegmentAnalysis:
 
     @patch("services.analysis_service.DocSummaryWorkflow.process_segment", side_effect=_fake_process_segment)
     def test_multiple_segments_use_async_path(self, mock_ps, monkeypatch):
-        monkeypatch.setenv("LATE_MAX_CONCURRENT_SEGMENTS", "3")
+        monkeypatch.setenv("DOCPIPE_MAX_CONCURRENT_SEGMENTS", "3")
         reset_config()
         from services.analysis_service import run_segment_analysis
 
@@ -76,7 +76,7 @@ class TestRunSegmentAnalysis:
     @patch("services.analysis_service.DocSummaryWorkflow.process_segment", side_effect=_fake_process_segment)
     def test_concurrency_limit_1_runs_sequentially(self, mock_ps, monkeypatch):
         """Bei max_concurrent_segments=1 wird der sequentielle Pfad genommen."""
-        monkeypatch.setenv("LATE_MAX_CONCURRENT_SEGMENTS", "1")
+        monkeypatch.setenv("DOCPIPE_MAX_CONCURRENT_SEGMENTS", "1")
         reset_config()
         from services.analysis_service import run_segment_analysis
 
@@ -88,7 +88,7 @@ class TestRunSegmentAnalysis:
     @patch("services.analysis_service.DocSummaryWorkflow.process_segment", side_effect=_fake_process_segment)
     def test_segments_ordered_by_id(self, mock_ps, monkeypatch):
         """Auch bei umgekehrter Reihenfolge kommen Ergebnisse sortiert."""
-        monkeypatch.setenv("LATE_MAX_CONCURRENT_SEGMENTS", "2")
+        monkeypatch.setenv("DOCPIPE_MAX_CONCURRENT_SEGMENTS", "2")
         reset_config()
         from services.analysis_service import run_segment_analysis
 
@@ -99,7 +99,7 @@ class TestRunSegmentAnalysis:
     @patch("services.analysis_service.DocSummaryWorkflow.process_segment")
     def test_exception_propagates(self, mock_ps, monkeypatch):
         """EnvironmentError aus _process_segment wird nicht geschluckt."""
-        monkeypatch.setenv("LATE_MAX_CONCURRENT_SEGMENTS", "2")
+        monkeypatch.setenv("DOCPIPE_MAX_CONCURRENT_SEGMENTS", "2")
         reset_config()
         mock_ps.side_effect = EnvironmentError("Azure config missing")
         from services.analysis_service import run_segment_analysis
@@ -111,7 +111,7 @@ class TestRunSegmentAnalysis:
     @patch("services.analysis_service.DocSummaryWorkflow.process_segment", side_effect=_fake_process_segment)
     def test_semaphore_limits_concurrency(self, mock_ps, monkeypatch):
         """Prüft dass maximal N Segmente gleichzeitig laufen."""
-        monkeypatch.setenv("LATE_MAX_CONCURRENT_SEGMENTS", "2")
+        monkeypatch.setenv("DOCPIPE_MAX_CONCURRENT_SEGMENTS", "2")
         reset_config()
 
         import asyncio
@@ -142,7 +142,7 @@ class TestRunSegmentAnalysis:
     @patch("services.analysis_service.DocSummaryWorkflow.process_segment", side_effect=_fake_process_segment)
     def test_max_workers_argument_is_effective(self, mock_ps, monkeypatch):
         """Der Call-Parameter darf die Env-basierte Default-Concurrency überschreiben."""
-        monkeypatch.setenv("LATE_MAX_CONCURRENT_SEGMENTS", "5")
+        monkeypatch.setenv("DOCPIPE_MAX_CONCURRENT_SEGMENTS", "5")
         reset_config()
 
         import time

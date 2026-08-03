@@ -1,8 +1,8 @@
-"""core/rubrum.py – Rubrum-Parsing und Party-Extraktion.
+"""core/rubrum.py – Case caption (rubrum) parsing and party extraction.
 
-Ausgelagert aus core/analyzer.py (Schritt 4).
-Enthält alle Rubrum-Regexe, Helfer und die öffentliche
-apply_rubrum_parties_override-Funktion.
+Moved out of core/analyzer.py (Step 4).
+Contains all rubrum regexes, helpers, and the public
+apply_rubrum_parties_override function.
 """
 
 import re

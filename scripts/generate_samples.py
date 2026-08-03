@@ -1,15 +1,15 @@
-"""scripts/generate_samples.py – Generator fuer synthetische Beispiel-PDFs.
+"""scripts/generate_samples.py – Generator for synthetic sample PDFs.
 
-Dieses Skript erzeugt ALLE Beispieldokumente unter samples/ von Grund auf neu.
-Es liest, kopiert oder referenziert an keiner Stelle echte Dokumente. Jeder
-Name, jede Adresse, jede IBAN und jedes Aktenzeichen in den erzeugten PDFs
-stammt aus einem offensichtlich fiktiven Namensraum (Mustermann/Beispiel-Stil),
-damit niemand, der eine dieser Dateien oeffnet, sie mit einem echten
-Mandanten- oder Geschaeftsvorgang verwechseln kann.
+This script generates ALL sample documents under samples/ from scratch.
+It never reads, copies, or references any real documents. Every name,
+address, IBAN, and reference number in the generated PDFs comes from an
+obviously fictional namespace (Mustermann/Beispiel style, the German
+equivalent of "John Doe"/"Jane Sample"), so nobody opening one of these
+files could mistake it for a real client or business record.
 
-Zweck: oeffentliches Portfolio-Repo braucht Beispiel-Input, das die
-Extraktions-/Segmentierungs-/Redaction-Pipeline exerciert, ohne jemals echte
-(vertrauliche) Mandantendokumente zu enthalten oder zu referenzieren.
+Purpose: a public portfolio repo needs sample input that exercises the
+extraction/segmentation/redaction pipeline without ever containing or
+referencing real (confidential) documents.
 
 Sample inputs are generated, never real documents.
 

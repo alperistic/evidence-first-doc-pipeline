@@ -1,9 +1,13 @@
-"""governance/pseudonymizer.py – Personen- und Firmen-Pseudonymisierung.
+"""governance/pseudonymizer.py – Person and company pseudonymization.
 
-Extrahiert aus governance/redaction.py (W2 God-File-Split).
-Enthält pseudonymize_people(), _apply_pseudonymization(),
-_apply_company_redaction(), apply_pseudonym_map() und alle
-zugehörigen Hilfsfunktionen.
+Extracted from governance/redaction.py (W2 god-file split).
+Contains pseudonymize_people(), _apply_pseudonymization(),
+_apply_company_redaction(), apply_pseudonym_map(), and all
+related helper functions.
+
+Note: the patterns below target German-language legal/business documents
+(company suffixes, address formats, honorifics, etc.) and are intentionally
+not translated — they match content, not code.
 """
 
 from __future__ import annotations
@@ -35,7 +39,7 @@ from governance.redaction_patterns import (
 )
 
 # ---------------------------------------------------------------------------
-# Hilfsfunktionen
+# Helper functions
 # ---------------------------------------------------------------------------
 
 
@@ -84,10 +88,10 @@ def _is_person_candidate(text: str, start: int, end: int, candidate: str) -> boo
     normalized = re.sub(r"\s+", " ", (candidate or "").strip())
     if not normalized:
         return False
-    # Stoplist: bekannte juristische Begriffe / Boilerplate
+    # Stoplist: known legal/boilerplate terms
     if normalized.casefold() in _PERSON_STOPLIST:
         return False
-    # Zeilen die nur aus Großbuchstaben/Ziffern/Sonderzeichen bestehen → kein Name
+    # Lines consisting only of uppercase letters/digits/special chars → not a name
     if _ALL_UPPER_LINE_RE.fullmatch(normalized):
         return False
     core = _TITLE_PREFIX_RE.sub("", normalized)
@@ -120,19 +124,19 @@ def _is_person_candidate(text: str, start: int, end: int, candidate: str) -> boo
 
 
 def _overlaps_seen(start: int, end: int, seen_spans: set[tuple[int, int]]) -> bool:
-    """Prüft ob (start, end) mit irgendeinem bereits reservierten Span überlappt."""
+    """Checks whether (start, end) overlaps with any already reserved span."""
     return any(not (end <= s or start >= e) for s, e in seen_spans)
 
 # ---------------------------------------------------------------------------
-# Hauptfunktionen
+# Main functions
 # ---------------------------------------------------------------------------
 
 
 def pseudonymize_people(text: str, max_labels: int = 10) -> tuple[str, dict[str, str]]:
     """
-    Ersetzt erkannte Personennamen deterministisch durch Pseudonyme.
+    Deterministically replaces detected person names with pseudonyms.
 
-    Rückgabe: (pseudonymisierter_text, mapping_original_auf_label)
+    Returns: (pseudonymized_text, mapping_original_to_label)
     """
     if not text:
         return "", {}
@@ -162,18 +166,18 @@ def pseudonymize_people(text: str, max_labels: int = 10) -> tuple[str, dict[str,
                 break
         return key_to_label[name_key]
 
-    # P1-A / FIX 1: ORG-Counter und -Map vorab initialisieren, damit sowohl
-    # die _PARTY_PERSON_RE-Schleife (bei ORG-Suffix-Erkennung) als auch die
-    # spätere Standalone-ORG-Schleife denselben Counter verwenden.
+    # P1-A / FIX 1: Pre-initialize the ORG counter and map so that both
+    # the _PARTY_PERSON_RE loop (on ORG-suffix detection) and the later
+    # standalone-ORG loop use the same counter.
     _existing_org_nums = [int(m.group(1)) for m in re.finditer(r"\[ORG_(\d+)\]", text)]
     _org_counter: int = max(_existing_org_nums) if _existing_org_nums else 0
     _org_key_to_label: dict[str, str] = {}
 
-    # PR11 P9: Firmennamen nach Rollenbezeichnung zuerst scannen, damit der
-    # vollständige Firmenname (inkl. GmbH-Suffix) den partiellen Person-Match
-    # (nur 2 Wörter via _PARTY_PERSON_RE) via Overlap-Schutz verhindert.
-    # WICHTIG: _assign_label() wird erst NACH dem Overlap-Check aufgerufen,
-    # damit kein Label-Slot für geskippte Partial-Matches verbraucht wird.
+    # PR11 P9: Scan company names after role designations first, so the
+    # full company name (incl. GmbH suffix) blocks the partial person match
+    # (only 2 words via _PARTY_PERSON_RE) via the overlap guard.
+    # IMPORTANT: _assign_label() is only called AFTER the overlap check,
+    # so no label slot is consumed for skipped partial matches.
     for match in _PARTY_COMPANY_RE.finditer(text):
         company_start, company_end = match.span("company")
         original = match.group("company").strip()
@@ -196,11 +200,11 @@ def pseudonymize_people(text: str, max_labels: int = 10) -> tuple[str, dict[str,
             continue
         if _overlaps_seen(name_start, name_end, seen_spans):
             continue
-        # P1-A: Prüfen ob nach dem gematchten Namen ein Rechtsform-Suffix folgt
-        # → wenn ja, ist es ein Firmenname (ORG), nicht eine Person.
+        # P1-A: Check whether a legal-form suffix follows the matched name
+        # → if so, it's a company name (ORG), not a person.
         suffix_match = _TRAILING_ORG_SUFFIX_RE.match(text[name_end:])
         if suffix_match:
-            # Span auf den vollständigen Firmennamen inkl. Suffix erweitern
+            # Extend the span to the full company name incl. suffix
             full_end = name_end + suffix_match.end()
             full_original = text[name_start:full_end].strip()
             if _overlaps_seen(name_start, full_end, seen_spans):
@@ -222,13 +226,13 @@ def pseudonymize_people(text: str, max_labels: int = 10) -> tuple[str, dict[str,
         replacements.append((name_start, name_end, label))
         seen_spans.add((name_start, name_end))
 
-    # Bug 1 (P1): Standalone-ORG-Detection – Unternehmensname OHNE Rollenkontext.
-    # Läuft nach rollenbasierter Erkennung (_PARTY_COMPANY_RE / _PARTY_PERSON_RE),
-    # damit role-context-Firmen ihre [PARTEI_N]-Labels behalten. Läuft VOR
-    # _PERSON_CANDIDATE_RE, damit kein Teilname als PERSON maskiert wird und
-    # der Rechtsform-Suffix ("GmbH & Co. KG") im Klartext bleibt.
-    # _org_counter / _org_key_to_label wurden oben vor der _PARTY_PERSON_RE-Schleife
-    # initialisiert (P1-A), damit beide Schleifen denselben Counter verwenden.
+    # Bug 1 (P1): Standalone-ORG detection – company name WITHOUT role context.
+    # Runs after role-based detection (_PARTY_COMPANY_RE / _PARTY_PERSON_RE),
+    # so role-context companies keep their [PARTEI_N] labels. Runs BEFORE
+    # _PERSON_CANDIDATE_RE, so no partial name gets masked as PERSON and
+    # the legal-form suffix ("GmbH & Co. KG") stays in plaintext.
+    # _org_counter / _org_key_to_label were initialized above, before the
+    # _PARTY_PERSON_RE loop (P1-A), so both loops use the same counter.
     for match in _STANDALONE_ORG_RE.finditer(text):
         org_start, org_end = match.span()
         original = match.group(0).strip()
@@ -251,7 +255,7 @@ def pseudonymize_people(text: str, max_labels: int = 10) -> tuple[str, dict[str,
             continue
         if _overlaps_seen(match.start(), match.end(), seen_spans):
             continue
-        # P1-A: Auch bei kontextfreien Kandidaten auf Rechtsform-Suffix prüfen
+        # P1-A: Also check context-free candidates for a legal-form suffix
         suffix_match = _TRAILING_ORG_SUFFIX_RE.match(text[match.end():])
         if suffix_match:
             full_end = match.end() + suffix_match.end()
@@ -280,7 +284,7 @@ def pseudonymize_people(text: str, max_labels: int = 10) -> tuple[str, dict[str,
 
     out_parts: list[str] = []
     cursor = 0
-    # Längere Spans haben Vorrang bei gleichem Startpunkt (Safety-Netz).
+    # Longer spans take precedence at the same start point (safety net).
     for start, end, label in sorted(replacements, key=lambda item: (item[0], -item[1])):
         if start < cursor:
             continue
@@ -290,11 +294,12 @@ def pseudonymize_people(text: str, max_labels: int = 10) -> tuple[str, dict[str,
     out_parts.append(text[cursor:])
     out = "".join(out_parts)
 
-    # FIX 6 (P2): Zweiter Durchgang – maskiert alleinstehende Nachnamen wenn
-    # der vollständige Name bereits im Dokument erfasst wurde.
-    # Beispiel: "Kevin Stark" → [PARTEI_1]; danach bleibt "Stark" allein im
-    # Text ungemaskiert. Zweiter Pass ersetzt es mit demselben Platzhalter.
-    # Nur Nachnamen mit ≥4 Zeichen, Großschreibung und kein Stoppwort.
+    # FIX 6 (P2): Second pass – masks standalone surnames when the full
+    # name has already been captured elsewhere in the document.
+    # Example: "Kevin Stark" → [PARTEI_1]; afterwards "Stark" alone remains
+    # unmasked in the text. This second pass replaces it with the same
+    # placeholder. Only surnames with >=4 characters, capitalized, and not
+    # a stopword.
     _surname_to_label: dict[str, str] = {}
     for original, label in original_to_label.items():
         name_clean = _TITLE_PREFIX_RE.sub("", original).strip()
@@ -341,7 +346,7 @@ def _apply_pseudonymization(text: str) -> tuple[str, dict[str, str], dict[str, A
 
 
 def _apply_company_redaction(text: str) -> tuple[str, dict[str, str], dict[str, Any]]:
-    """Pseudonymisiert Firmennamen als [FIRMA_N]."""
+    """Pseudonymizes company names as [FIRMA_N]."""
     if not text:
         return "", {}, {"mask_counts": {}, "mask_types": {}, "entity_count": 0, "placeholder_keys": []}
 
@@ -389,8 +394,8 @@ def _apply_company_redaction(text: str) -> tuple[str, dict[str, str], dict[str, 
 
 def apply_pseudonym_map(text: str, mapping: dict[str, str]) -> str:
     """
-    Wendet ein bestehendes Pseudonym-Mapping auf beliebigen Text an.
-    Erwartet mapping: original -> placeholder.
+    Applies an existing pseudonym mapping to arbitrary text.
+    Expects mapping: original -> placeholder.
     """
     if not text or not mapping:
         return text

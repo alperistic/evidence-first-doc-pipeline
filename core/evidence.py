@@ -1,6 +1,6 @@
 """
-core/evidence.py – Fassade: re-exportiert party_extractor + evidence_map + Guardrails
-Ausgelagert aus llm.py (Phase 1, Schritt 2 – Strangler-Fig).
+core/evidence.py – Facade: re-exports party_extractor + evidence_map + guardrails
+Extracted from llm.py (Phase 1, Step 2 – Strangler Fig).
 """
 
 import re
@@ -69,7 +69,7 @@ from core.evidence_map import (  # noqa: F401 – re-export
 )
 
 # ---------------------------------------------------------------------------
-# Guardrails-Konstanten (verbleiben in der Fassade)
+# Guardrail constants (remain in the facade)
 # ---------------------------------------------------------------------------
 
 _LEGAL_GUARD_REPLACEMENTS: list[tuple[str, str]] = [
@@ -139,7 +139,7 @@ _LEAK_TERMS_BY_DOC_TYPE: dict[str, tuple[str, ...]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Guardrails-Funktionen
+# Guardrail functions
 # ---------------------------------------------------------------------------
 
 
@@ -169,7 +169,7 @@ def apply_evidence_guardrails(
     item_fields: tuple[str, ...],
 ) -> dict:
     """
-    Ergänzt fehlende Citations aus der Evidence Map und markiert unbelegte Aussagen neutral.
+    Fills in missing citations from the evidence map and neutrally flags unsupported claims.
     """
     out = dict(parsed or {})
     out = attach_evidence_map_to_parsed(out, evidence_map)
@@ -268,7 +268,8 @@ def _is_allowed_for_doc_type(text: str, doc_type_key: str) -> bool:
 
 def apply_doc_type_consistency_gate(parsed: dict, doc_type_hint: str | None = None) -> dict:
     """
-    Markiert mögliche Cross-Doc-Leaks und verschiebt sie aus Fakten nach Unklarheiten/Rückfragen.
+    Flags possible cross-document leaks and moves them from facts into
+    ambiguities/follow-up questions.
     """
     out = dict(parsed or {})
     doc_type_key = _resolve_doc_type_key(out, doc_type_hint=doc_type_hint)
@@ -353,7 +354,7 @@ def finalize_evidence_first_output(parsed: dict, item_fields: tuple[str, ...]) -
                 item["citation_status"] = "unverified"
                 unverified_items.append(item)
 
-        # Evidence-first: wenn belegte Claims vorhanden sind, unbelegte Claims aus Kernfeldern auslagern.
+        # Evidence-first: if supported claims exist, move unsupported claims out of core fields.
         if verified_items and unverified_items:
             for item in unverified_items:
                 claim_text = str(item.get("text", "") or item.get("title", "")).strip()
@@ -361,7 +362,7 @@ def finalize_evidence_first_output(parsed: dict, item_fields: tuple[str, ...]) -
                     follow_up.append(f"Rückfrage ({field}): {claim_text} – Beleg fehlt im Segment.")
             out[field] = verified_items
         elif not verified_items and unverified_items:
-            # Wenn nichts verifiziert ist, nur einen neutralen Hinweis behalten.
+            # If nothing is verified, keep only a single neutral note.
             kept = dict(unverified_items[0])
             text = str(kept.get("text", "") or kept.get("title", "")).strip()
             if text and "unverified" not in text.lower():
@@ -399,8 +400,8 @@ def apply_no_legal_advice_guard(
     doc_type_hint: str | None = None,
 ) -> dict[str, Any]:
     """
-    Neutralisiert wertende Rechtsberatungs-Formulierungen in To-dos/Unklarheiten/Prüffragen
-    vor UI-Rendering und Export.
+    Neutralizes evaluative legal-advice-style phrasing in to-dos/ambiguities/
+    follow-up questions before UI rendering and export.
     """
     out = dict(parsed or {})
     doc_type_key = _resolve_doc_type_key(out, doc_type_hint=doc_type_hint) or _GENERIC_DOC_TYPE

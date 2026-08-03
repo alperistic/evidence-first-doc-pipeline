@@ -1,8 +1,8 @@
-"""core/citation.py – Citation-Verification-Logik.
+"""core/citation.py - Citation verification logic.
 
-Ausgelagert aus core/evidence.py (PR5) und core/analyzer.py (Schritt 5).
-Enthält summarize_citation_verification, Citation-Matching-Helfer,
-Token-Matching und verify_citations_for_fields.
+Split out of core/evidence.py (PR5) and core/analyzer.py (Step 5).
+Contains summarize_citation_verification, citation-matching helpers,
+token matching, and verify_citations_for_fields.
 """
 
 import re
@@ -147,7 +147,7 @@ def summarize_citation_verification(
 
 
 # ---------------------------------------------------------------------------
-# Token / quote matching helpers (moved from analyzer.py, Schritt 5)
+# Token / quote matching helpers (moved from analyzer.py, Step 5)
 # ---------------------------------------------------------------------------
 
 
@@ -236,7 +236,7 @@ def _partial_ratio(a: str, b: str) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Citation matching helpers (moved from analyzer.py, Schritt 5)
+# Citation matching helpers (moved from analyzer.py, Step 5)
 # ---------------------------------------------------------------------------
 
 
@@ -423,7 +423,7 @@ def _heuristic_citation_for_item_text(
 
 
 # ---------------------------------------------------------------------------
-# Citation verification (moved from analyzer.py, Schritt 5)
+# Citation verification (moved from analyzer.py, Step 5)
 # ---------------------------------------------------------------------------
 
 

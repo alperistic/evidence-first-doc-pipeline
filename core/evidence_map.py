@@ -1,6 +1,6 @@
 """
-core/evidence_map.py – Evidence-Map-Konstruktion & Normalisierung
-Ausgelagert aus core/evidence.py (W2 – Evidence-Split).
+core/evidence_map.py – Evidence map construction & normalization
+Extracted from core/evidence.py (W2 – evidence split).
 """
 
 import re
@@ -45,10 +45,10 @@ from core.party_extractor import (
 )
 
 # ---------------------------------------------------------------------------
-# Konstanten
+# Constants
 # ---------------------------------------------------------------------------
 
-MIN_BETRAG_CONFIDENCE = 1.0  # Beträge nur bei eindeutiger Klassifikation ausgeben
+MIN_BETRAG_CONFIDENCE = 1.0  # only emit amounts on unambiguous classification
 
 _REPEATING_EDGE_PAGE_RE = re.compile(
     r"\b(seite|page)\s*\d+(?:\s*(?:/|von|of)\s*\d+)?\b",
@@ -96,12 +96,13 @@ _EVIDENCE_TOPK_BY_FIELD: dict[str, int] = {
 }
 
 _DEADLINE_DURATION_RE = re.compile(
-    # PR12: inflektierte Formen (Monaten, Tagen, Jahren, Wochen) ebenfalls erfassen
+    # PR12: also capture inflected forms (Monaten, Tagen, Jahren, Wochen)
     r"\b\d+\s*(?:monate?n?|wochen?|tage?n?|jahre?n?)\b",
     flags=re.IGNORECASE,
 )
-# Aktenzeichen-Marker: "Az.", "AZ:", "Aktenzeichen:", "Geschäftszeichen:", "Unser Zeichen:"
-# gefolgt vom eigentlichen Aktenzeichen-Wert (alphanumerisch, bis 80 Zeichen)
+# Case-reference ("Aktenzeichen") markers: "Az.", "AZ:", "Aktenzeichen:",
+# "Geschäftszeichen:", "Unser Zeichen:" followed by the actual reference
+# value (alphanumeric, up to 80 characters)
 _AZ_LINE_RE = re.compile(
     r"\b(?:az\.?:?|aktenzeichen\s*:?|gesch[äa]ftszeichen\s*:?|unser\s+zeichen\s*:?)\s*"
     r"([^\n,;(]{3,80})",
@@ -109,8 +110,8 @@ _AZ_LINE_RE = re.compile(
 )
 
 
-# FIX 3: Deutsche Stopwörter die KEINE AZ-Bestandteile sind, aber ≤3 Buchstaben
-# mit Großbuchstaben haben (z.B. "Der", "Die", "Das", "Ihr", "Bis").
+# FIX 3: German stopwords that are NOT case-reference components, but have
+# <=3 letters with uppercase characters (e.g. "Der", "Die", "Das", "Ihr", "Bis").
 _AZ_STOP_WORDS = frozenset({
     "der", "die", "das", "den", "dem", "des",
     "ein", "eine", "einer", "eines", "einem", "einen",
@@ -136,7 +137,7 @@ def _clean_az_value(raw: str) -> str:
     for tok in tokens:
         # Strip trailing punctuation for classification only
         tok_clean = tok.rstrip(".,;:!?")
-        # FIX 3: Skip common German words that are not AZ components
+        # FIX 3: Skip common German words that are not case-reference components
         if tok_clean.lower() in _AZ_STOP_WORDS:
             break
         is_az_component = (
@@ -154,21 +155,23 @@ def _clean_az_value(raw: str) -> str:
     if len(result) > 40:
         result = result[:40].rstrip()
     return result
-# Gericht-Erkennung: Gerichtstyp (explizit case-insensitive im Pattern) + Ortsname
-# mit Großbuchstaben-Pflicht. Kein re.IGNORECASE, damit "olg wurde" nicht matcht.
+# Court ("Gericht") detection: court type (explicitly case-insensitive in the
+# pattern) + place name requiring uppercase. No re.IGNORECASE, so that
+# "olg wurde" does not match.
 _GERICHT_RE = re.compile(
     r"\b((?:[Aa]mtsgericht|[Ll]andgericht|[Oo]berlandesgericht|OLG|[Bb]undesgerichtshof|BGH"
     r"|[Aa]rbeitsgericht|[Ss]ozialgericht|[Ff]inanzgericht|[Vv]erwaltungsgericht)"
     r"(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+(?:\s+(?:am|an\s+der?)\s+[A-ZÄÖÜ][a-zäöüß]+)?)?)"
 )
-# PR12 P1: Wortgrenze-bewusstes Kündigung-Pattern — matcht NICHT 'vorankündigung'
+# PR12 P1: word-boundary-aware "Kündigung" (termination) pattern — does NOT
+# match 'vorankündigung' (advance notice)
 _KUENDIGUNG_WORD_RE = re.compile(
     r"\b(?:kündigung|kuendigung)(?:sfrist)?\b",
     re.IGNORECASE,
 )
-# PR13 P4: Jahreszahl-Erkennung — "2026 EUR" aus Datums-Token ausschließen
+# PR13 P4: year-number detection — excludes "2026 EUR" from being read as a date token
 _YEAR_AMOUNT_RE = re.compile(r"^(?:19|20)\d{2}$")
-# FIX 4: Starke Frist-Trigger — Daten ohne diese Keywords sind keine Fristen
+# FIX 4: strong deadline ("Frist") triggers — dates without these keywords are not deadlines
 _STRONG_FRIST_TRIGGERS = (
     "frist", "fristablauf", "spätestens", "spaetestens",
     "fällig bis", "faellig bis", "bis spätestens", "bis spaetestens",
@@ -177,8 +180,9 @@ _STRONG_FRIST_TRIGGERS = (
     "letzte zahlungsaufforderung", "termin", "fällig am", "faellig am",
     "ablauf", "lief ab", "läuft ab", "verstrichen",
 )
-# FIX 2/6: Negativ-Kontext — diese Keywords signalisieren Geburtsdaten / Eintrittsdaten /
-# Gründungsdaten. Solche Daten sind KEINE Fristen, auch wenn "termin" o.ä. im Fenster vorkommt.
+# FIX 2/6: negative context — these keywords signal birth dates / start-of-employment
+# dates / founding dates. Such dates are NOT deadlines, even if "termin" or similar
+# appears in the surrounding window.
 _NON_FRIST_CONTEXT_KEYWORDS = (
     "geboren", "geb.", "geburtsdatum", "geburtstag",
     "* ",  # genealogisches Asterisk-Zeichen vor Datum
@@ -186,14 +190,15 @@ _NON_FRIST_CONTEXT_KEYWORDS = (
     "eintritt", "beschäftigungsbeginn", "beschaeftigungsbeginn",
     "tätig seit", "taetig seit", "arbeitsverhältnis seit", "arbeitsverhaeltnis seit",
     "angestellt seit", "arbeitsbeginn", "seit dem",  # FIX 3: zusätzliche Beschäftigungsbeginn-Keywords
-    "in kraft seit",  # FIX 3: Vertragsbeginn-Keyword
+    "in kraft seit",  # FIX 3: contract-start keyword
     "gegründet", "gegruendet", "gründung", "gruendung",
     "eingetragen", "eintragung", "registriert",
-    # FIX 1/2 new: Arbeitsvertrags- und Beschäftigungsbeginn-Signaturen
+    # FIX 1/2 new: employment-contract and start-of-employment signatures
     "arbeitsvertrag vom", "beginn des arbeitsverhältnisses", "beginn des arbeitsverhaeltnisses",
     "eingetreten am", "trat ein am",
 )
-# FIX 2: "Vertrag vom" filtert nur für Daten vor 2024; neuere Verträge könnten relevante Fristen sein.
+# FIX 2: "Vertrag vom" (contract dated) only filters dates before 2024; more recent
+# contracts may contain relevant deadlines.
 _VERTRAG_VOM_RE = re.compile(r"\bvertrag\s+vom\b", re.IGNORECASE)
 _PAST_DATE_YEAR_RE = re.compile(r"\b((?:19|20)\d{2})\b")
 
@@ -202,13 +207,13 @@ _FULL_DATE_RE = re.compile(r"\b(\d{1,2})\.(\d{1,2})\.((?:19|20)\d{2})\b")
 
 
 def _is_past_date_no_strong_frist_context(date_value: str, context: str) -> bool:
-    """FIX 4 / FIX 2 / FIX 6: Returns True if the date should be filtered (not a Frist).
+    """FIX 4 / FIX 2 / FIX 6: Returns True if the date should be filtered (not a deadline).
 
     Filtering rules (checked in order):
-    1. Non-Frist context keywords (birth, employment, founding) → always filter.
+    1. Non-deadline context keywords (birth, employment, founding) → always filter.
     2. Dates before 1960 → always filter.
-    3. Past date without a strong Frist trigger keyword → filter.
-    Historical expired Fristen ("Frist lief ab am ...") are preserved because they
+    3. Past date without a strong deadline trigger keyword → filter.
+    Historically expired deadlines ("Frist lief ab am ...") are preserved because they
     contain strong keywords like "frist" or "lief ab".
     """
     # Try to parse full date (dd.mm.yyyy) for accurate past/future check
@@ -227,7 +232,7 @@ def _is_past_date_no_strong_frist_context(date_value: str, context: str) -> bool
         is_past = year < _date.today().year
 
     if not is_past:
-        return False  # Future/today dates are always kept
+        return False  # future/today dates are always kept
     ctx = context.lower()
     # Extract year_val early (needed for year-based checks below)
     if full_match:
@@ -235,28 +240,30 @@ def _is_past_date_no_strong_frist_context(date_value: str, context: str) -> bool
     else:
         year_match2 = _PAST_DATE_YEAR_RE.search(date_value)
         year_val = int(year_match2.group(1)) if year_match2 else 0
-    # FIX 2/6: Negative context check — birth/employment/founding dates are NEVER Fristen,
-    # regardless of whether "termin" or other soft triggers appear in the same window.
+    # FIX 2/6: negative context check — birth/employment/founding dates are NEVER
+    # deadlines, regardless of whether "termin" or other soft triggers appear in
+    # the same window.
     for neg_kw in _NON_FRIST_CONTEXT_KEYWORDS:
         if neg_kw in ctx:
-            return True  # Always filter — not a Frist
+            return True  # always filter — not a deadline
     # Dates before 1960 are never deadlines (birth years, founding years, etc.)
     if year_val > 0 and year_val < 1960:
-        return True  # Always filter pre-1960 dates regardless of context
+        return True  # always filter pre-1960 dates regardless of context
     for trigger in _STRONG_FRIST_TRIGGERS:
         if trigger in ctx:
-            return False  # Has strong context → keep as Frist
-    # FIX 2: "Vertrag vom" — filter old contracts (pre-2024); recent ones (2024+) may be relevant.
+            return False  # has strong context → keep as a deadline
+    # FIX 2: "Vertrag vom" (contract dated) — filter old contracts (pre-2024);
+    # recent ones (2024+) may be relevant.
     # This check runs after strong triggers so "Frist aus dem Vertrag vom..." is kept.
     if _VERTRAG_VOM_RE.search(ctx) and year_val > 0:
         if year_val < 2024:
-            return True   # old contract date without explicit Frist context → filter
+            return True   # old contract date without explicit deadline context → filter
         return False      # recent contract date → keep
-    return True  # Past date without strong Frist context → filter
-# U10: Gesamtzahllast-Erkennung
-# Pattern 1 (linker Teil): "betraegt/beträgt" direkt vor dem Betrag
+    return True  # past date without strong deadline context → filter
+# U10: total-payment-obligation ("Gesamtzahllast") detection
+# Pattern 1 (left part): "betraegt/beträgt" directly before the amount
 _ZAHLLAST_LEFT_RE = re.compile(r"betr[äa]g[t]\s*$", re.IGNORECASE)
-# Pattern 1 (rechter Teil): "fällig jeweils" qualifiziert als periodische Gesamtzahlung
+# Pattern 1 (right part): "fällig jeweils" qualifies as a recurring total payment
 _ZAHLLAST_RIGHT_RE = re.compile(r"\bf[äa]llig\s+jeweils\b", re.IGNORECASE)
 
 _FORBIDDEN_REPLACEMENTS: list[tuple[str, str]] = [
@@ -289,7 +296,7 @@ _FORBIDDEN_REPLACEMENTS: list[tuple[str, str]] = [
 ]
 
 # ---------------------------------------------------------------------------
-# Hilfsfunktionen
+# Helper functions
 # ---------------------------------------------------------------------------
 
 
@@ -392,7 +399,7 @@ def _searchable_pages_without_repeating_edges(pages: list[dict[str, Any]]) -> li
 
 
 def _is_year_like_amount(value: str) -> bool:
-    """True wenn der Betrags-Wert einer Jahreszahl (1900–2099) ohne Dezimalstellen entspricht."""
+    """True if the amount value matches a year number (1900-2099) with no decimal places."""
     stripped = re.sub(r"\s*(?:eur(?:o)?|€)\s*", "", value, flags=re.IGNORECASE).strip()
     return bool(_YEAR_AMOUNT_RE.match(stripped))
 
@@ -493,7 +500,7 @@ def _normalize_evidence_map(items: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
-    Erzeugt pro Segment eine Evidence Map:
+    Produces an evidence map per segment:
     {"field", "value", "page", "quote"}.
     """
     evidence: list[dict[str, Any]] = []
@@ -502,9 +509,9 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return evidence
 
     amount_re = re.compile(
-        r"(?:€|eur(?:o)?)\s*\d{1,3}(?:[.]\d{3})*(?:,\d{2})?"  # EUR/€-Prefix (z.B. EUR 1.090)
-        r"|\d{1,3}(?:[.]\d{3})+(?:,\d{2})?\s*(?:€|eur(?:o)?)"  # Tausenderpunkt-Betrag (z.B. 1.090 €)
-        r"|\d{1,4}(?:,\d{2})?\s*(?:€|eur(?:o)?)",               # Kurzbetrag bis 4-stellig (z.B. 240 €)
+        r"(?:€|eur(?:o)?)\s*\d{1,3}(?:[.]\d{3})*(?:,\d{2})?"  # EUR/€ prefix (e.g. EUR 1.090)
+        r"|\d{1,3}(?:[.]\d{3})+(?:,\d{2})?\s*(?:€|eur(?:o)?)"  # thousands-separator amount (e.g. 1.090 €)
+        r"|\d{1,4}(?:,\d{2})?\s*(?:€|eur(?:o)?)",               # short amount up to 4 digits (e.g. 240 €)
         re.IGNORECASE,
     )
     date_re = re.compile(r"\b\d{1,2}\.\d{1,2}\.\d{2,4}\b")
@@ -517,7 +524,7 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
         flat_text = _normalize_ws(page_text)
         if flat_text:
-            # Rolle + Name aus tokenisierten PDFs extrahieren (z.B. "Vermieter Thomas Bergmann").
+            # Extract role + name from tokenized PDFs (e.g. "Vermieter Thomas Bergmann").
             for role in ("Vermieter", "Vermieterin", "Mieter", "Mieterin", "Arbeitgeber", "Arbeitnehmer", "Käufer", "Verkäufer"):
                 person_pattern = re.compile(
                     rf"{role}\s*:?\s*([A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+)"
@@ -540,37 +547,39 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
             for amount_match in amount_re.finditer(flat_text):
                 amount_value = _normalize_ws(amount_match.group(0))
-                if _is_year_like_amount(amount_value):  # PR13 P4: Jahrestoken ausschließen
+                if _is_year_like_amount(amount_value):  # PR13 P4: exclude year tokens
                     continue
                 quote = _window_quote(flat_text, amount_match.start(), amount_match.end(), left=50, right=70)
-                # Betragsmapping: Zweistufig — (1) clean_snippet verhindert Keyword-Bleeding
-                # aus Vorgängersatz, (2) Fallback auf Raw-Fenster wenn kein Keyword gefunden
-                # (fängt Keywords wie "Grundmiete" auf, die clean_snippet abschneidet, U10-Fix).
+                # Amount-to-field mapping: two-stage — (1) clean_snippet prevents keyword
+                # bleed from the preceding sentence, (2) fall back to the raw window if no
+                # keyword is found (catches keywords like "Grundmiete" that clean_snippet
+                # would otherwise cut off, U10 fix).
                 _fs, _fe = amount_match.start(), amount_match.end()
                 _raw_window = flat_text[max(0, _fs - 50) : min(len(flat_text), _fe + 50)]
                 kontext_fenster = _clip_quote_200(_raw_window)
                 klassifikation = klassifiziere_betrag_mit_confidence(kontext_fenster)
                 if klassifikation.confidence < MIN_BETRAG_CONFIDENCE and not klassifikation.is_ambiguous:
-                    # Kein Treffer mit Clip → Raw-Fenster nochmal versuchen.
-                    # Nur eindeutige Treffer übernehmen; Ambiguität im Raw-Fenster
-                    # ignorieren (wäre Bleeding aus Nachbarsatz).
+                    # No match with the clipped window → try the raw window again.
+                    # Only accept unambiguous matches; ignore ambiguity in the raw
+                    # window (that would be bleed from a neighboring sentence).
                     raw_klass = klassifiziere_betrag_mit_confidence(_normalize_ws(_raw_window))
                     if raw_klass.confidence >= MIN_BETRAG_CONFIDENCE:
                         klassifikation = raw_klass
                 if klassifikation.confidence >= MIN_BETRAG_CONFIDENCE:
                     field_name = klassifikation.feldname
                 elif klassifikation.is_ambiguous:
-                    field_name = "betraege_unklar"  # Mehrdeutig → nicht rendern
+                    field_name = "betraege_unklar"  # ambiguous → do not render
                 else:
-                    field_name = "betraege"  # Kein Keyword → generischer Betrag
-                # U10: Gesamtzahllast-Override — "zahllast" muss im linken Kontext
-                # stehen (verhindert False-Positives wie Sachverständigenkosten).
-                # Pattern 1: "zahllast … betraegt [AMOUNT] fällig jeweils am"
-                # Pattern 2: "Gesamte monatliche Zahllast: [AMOUNT]" (direktes Label)
-                # "betraege" wird einbezogen: wenn keine Miete-Keyword-Treffer im
-                # 50-Zeichen-Fenster → field="betraege" generic, aber P2 stimmt → Quote
-                # muss mit left=150 gesichert werden damit 3×clean_snippet nicht
-                # "Zahllast:" herauswirft und der Quality-Score konkurrenzfähig bleibt.
+                    field_name = "betraege"  # no keyword → generic amount
+                # U10: total-payment-obligation ("Gesamtzahllast") override — "zahllast"
+                # must be present in the left-hand context (prevents false positives such
+                # as expert-witness fees).
+                # Pattern 1: "zahllast ... betraegt [AMOUNT] fällig jeweils am"
+                # Pattern 2: "Gesamte monatliche Zahllast: [AMOUNT]" (direct label)
+                # "betraege" is included: if there is no rent-keyword match within the
+                # 50-character window → field="betraege" generic, but pattern 2 matches →
+                # the quote must be secured with left=150 so that clean_snippet (applied
+                # 3x) doesn't strip out "Zahllast:" and the quality score stays competitive.
                 _is_zahllast = False
                 if field_name in ("nebenkosten", "betraege_unklar", "miete", "betraege"):
                     _left_100 = flat_text[max(0, _fs - 100):_fs].lower()
@@ -609,7 +618,7 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 if _is_meta_block_context(date_window):
                     continue
                 if _contains_trigger_phrase(context, _DEADLINE_TRIGGER_PHRASES):
-                    # FIX 4: Filter past dates without strong Frist context
+                    # FIX 4: filter past dates without a strong deadline context
                     if not _is_past_date_no_strong_frist_context(date_value, context):
                         evidence.append(
                             {
@@ -628,12 +637,12 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                             "preisanpassung", "preiserhöhung", "preiserhoehung",
                             "stichtag", "frühestens", "fruehestens",
                             "nach vertragsbeginn", "nach dem vertragsbeginn",
-                            # FIX 5: "X monate nach" = Berechnungsstichtag, kein Vertragsbeginn
+                            # FIX 5: "X monate nach" = calculation reference date, not contract start
                             "monate nach", "monate nach dem",
                         )
                     )
                     if _is_meta_block_context(context) or _is_price_adj_context:
-                        pass  # kein datum_beginn eintrag
+                        pass  # no datum_beginn (contract-start) entry
                     else:
                         begin_quote = _select_best_sentence_snippet(
                             flat_text,
@@ -650,10 +659,10 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                             }
                         )
 
-            # Long-Format-Daten: "31. Januar 2025" – _select_best_sentence_snippet wird
-            # NICHT verwendet, weil _SENTENCE_BOUNDARY_RE "31. " als Satzgrenze erkennt
-            # und das Datum immer auf zwei Sätze aufteilt. Stattdessen direkt das
-            # ±120-Zeichen-Kontextfenster als Quote verwenden.
+            # Long-format dates: "31. Januar 2025" – _select_best_sentence_snippet is
+            # NOT used here because _SENTENCE_BOUNDARY_RE treats "31. " as a sentence
+            # boundary and always splits the date across two sentences. Instead, use
+            # the +/-120-character context window directly as the quote.
             for long_date_match in _GERMAN_MONTH_DATE_RE.finditer(flat_text):
                 long_date_raw = _normalize_ws(long_date_match.group(0))
                 _iso = _normalize_date_to_iso(long_date_raw)
@@ -669,7 +678,7 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 if _is_meta_block_context(long_date_window):
                     continue
                 if _contains_trigger_phrase(context, _DEADLINE_TRIGGER_PHRASES):
-                    # FIX 4: Filter past long-format dates without strong Frist context
+                    # FIX 4: filter past long-format dates without a strong deadline context
                     if not _is_past_date_no_strong_frist_context(long_date_value, context):
                         evidence.append(
                             {
@@ -681,8 +690,9 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                             }
                         )
 
-            # PR12 P2: Verlängerungsfristen vorab ermitteln — diese dürfen nicht als
-            # Kündigungsfrist klassifiziert werden, auch wenn 'Kündigung' im Kontextfenster steht.
+            # PR12 P2: determine renewal periods up front — these must not be
+            # classified as a termination deadline, even if 'Kündigung' appears in
+            # the context window.
             from core.legacy_deadlines import extract_renewal_and_termination
             _renewal_pairs = extract_renewal_and_termination(flat_text)
             _renewal_duration_values = {
@@ -702,11 +712,11 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 if _is_meta_block_context(context):
                     continue
                 if _contains_trigger_phrase(context, _DEADLINE_TRIGGER_PHRASES + ("kündigung", "kuendigung", "laufzeit")):
-                    # PR12 P1: Wortgrenze-Check verhindert Match auf 'vorankündigung'
+                    # PR12 P1: word-boundary check prevents a match on 'vorankündigung'
                     if _KUENDIGUNG_WORD_RE.search(context):
-                        # PR12 P2: Verlängerungszeitraum (z.B. "12 Monate") nicht als
-                        # Kündigungsfrist eintragen — extract_renewal_and_termination() liefert
-                        # die Kündigungsfrist separat korrekt.
+                        # PR12 P2: don't record the renewal period (e.g. "12 Monate") as
+                        # a termination deadline — extract_renewal_and_termination() already
+                        # supplies the termination deadline correctly, separately.
                         if duration_value not in _renewal_duration_values:
                             evidence.append(
                                 {
@@ -727,10 +737,10 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                             }
                         )
 
-            # PR12 P2: Kündigungsfrist aus Verlängerungs-/Kündigungsklausel eintragen
+            # PR12 P2: record the termination deadline from the renewal/termination clause
             for renewal_value, renewal_label in _renewal_pairs:
                 if renewal_label == "kuendigungsfrist":
-                    # Quote enthält flat_text damit _has_termination_label_trigger greift
+                    # Quote contains flat_text so that _has_termination_label_trigger applies
                     evidence.append(
                         {
                             "field": "kuendigung_fristen",
@@ -747,8 +757,8 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 continue
             line_l = line.lower()
 
-            # Parteien ausschließlich aus Segment-Zeilen extrahieren und Artefakte verwerfen.
-            # Erweitert um Liefervertrags-/Werkvertrags-Rollen (lieferant, auftragnehmer, auftraggeber).
+            # Extract parties exclusively from segment lines and discard artifacts.
+            # Extended with supply-contract/work-contract roles (lieferant, auftragnehmer, auftraggeber).
             if any(k in line_l for k in ("zwischen", "vertragsparteien", "arbeitgeber", "arbeitnehmer", "vermieter", "mieter", "käufer", "verkäufer", "lieferant", "auftragnehmer", "auftraggeber")):
                 for party in _extract_party_candidates(line):
                     evidence.append(
@@ -764,17 +774,17 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 amount_value = _normalize_ws(amount_match.group(0))
                 if _is_artifact_value(amount_value):
                     continue
-                if _is_year_like_amount(amount_value):  # PR13 P4: Jahrestoken ausschließen
+                if _is_year_like_amount(amount_value):  # PR13 P4: exclude year tokens
                     continue
-                # Betragsmapping: Einzelzeile zuerst, ±2-Zeilen-Fallback
+                # Amount-to-field mapping: single line first, +/-2-line fallback
                 _kontext = extract_context_lines(_page_lines, _line_idx, window=2)
                 klassifikation = klassifiziere_betrag_mit_kontext(line, _kontext)
                 if klassifikation.confidence >= MIN_BETRAG_CONFIDENCE:
                     field_name = klassifikation.feldname
                 elif klassifikation.is_ambiguous:
-                    field_name = "betraege_unklar"  # Mehrdeutig → nicht rendern
+                    field_name = "betraege_unklar"  # ambiguous → do not render
                 else:
-                    field_name = "betraege"  # Kein Keyword → generischer Betrag
+                    field_name = "betraege"  # no keyword → generic amount
                 _entry: dict[str, Any] = {
                     "field": field_name,
                     "value": amount_value,
@@ -785,16 +795,16 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     _entry["label"] = "unklar – bitte prüfen"
                 evidence.append(_entry)
 
-            # Fristen/Termine dokumentbasiert aus Segmentzeilen.
+            # Deadlines/dates ("Fristen/Termine"), document-based, from segment lines.
             if any(x in line_l for x in ("frist", "termin", "fällig", "faellig", "spätestens", "spaetestens", "kündigung", "kuendigung", "laufzeit")):
                 values: list[str] = []
                 values.extend(m.group(0) for m in date_re.finditer(line))
                 values.extend(_normalize_ws(m.group(0)) for m in _DEADLINE_DURATION_RE.finditer(line))
-                # FIX 2 (P1): Rohtext-Fallback entfernt. Nur Zeilen mit tatsächlichem
-                # Datum oder Dauer-Wert erzeugen Fristen-Evidence. Dokument-Header,
-                # Firmenname-Zeilen und Adressblöcke werden so nicht als Frist-Wert
-                # ausgegeben (z.B. "Kündigungsfrist: Innovatech Solutions GmbH...").
-                # (Früher: values.append(line[:120]) als Fallback)
+                # FIX 2 (P1): raw-text fallback removed. Only lines with an actual date
+                # or duration value produce deadline evidence. This keeps document
+                # headers, company-name lines, and address blocks from being emitted
+                # as a deadline value (e.g. "Kündigungsfrist: Innovatech Solutions GmbH...").
+                # (Previously: values.append(line[:120]) as a fallback)
                 for value in _dedupe_str_keep_order(values):
                     if _is_artifact_value(value):
                         continue
@@ -807,10 +817,10 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     context = f"{line} {best_quote}"
                     if _is_meta_block_context(context):
                         continue
-                    # FIX 1/2: Filter birth/employment/founding dates from line-based path too.
+                    # FIX 1/2: filter birth/employment/founding dates from the line-based path too.
                     if _is_past_date_no_strong_frist_context(value, context):
                         continue
-                    # PR12 P1: Wortgrenze-Check verhindert Match auf 'vorankündigung'
+                    # PR12 P1: word-boundary check prevents a match on 'vorankündigung'
                     if _KUENDIGUNG_WORD_RE.search(line_l):
                         kf_quote = _select_best_sentence_snippet(
                             page_text,
@@ -838,10 +848,11 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         )
 
             if any(x in line_l for x in ("beginn", "vertragsbeginn", "ab dem", "beginn des vertrages")):
-                # FIX 5: Preisanpassungs-Stichtage sind kein Vertragsbeginn.
-                # Nur spezifische Muster prüfen die eindeutig auf berechnete Stichtage hinweisen.
-                # "frühestens" und "preiserhöhung" allein dürfen nicht sperren — sie können
-                # in einem anderen Satz auf derselben Zeile stehen (→ echter Vertragsbeginn bleibt).
+                # FIX 5: price-adjustment reference dates are not a contract start date.
+                # Only check specific patterns that clearly indicate a calculated
+                # reference date. "frühestens" and "preiserhöhung" alone must not block —
+                # they can appear in a different sentence on the same line (→ a genuine
+                # contract-start date is still kept).
                 _line_is_price_adj = any(
                     kw in line_l
                     for kw in (
@@ -852,7 +863,7 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     )
                 )
                 if _is_meta_block_context(line) or _line_is_price_adj:
-                    pass  # kein datum_beginn eintrag
+                    pass  # no datum_beginn (contract-start) entry
                 else:
                     for match in date_re.finditer(line):
                         begin_value = _normalize_ws(match.group(0))
@@ -891,7 +902,7 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     }
                 )
 
-            # Aktenzeichen: "Az. 4 O 321/24", "Aktenzeichen: ABC-2025", "Geschäftszeichen: ..."
+            # Case reference ("Aktenzeichen"): "Az. 4 O 321/24", "Aktenzeichen: ABC-2025", "Geschäftszeichen: ..."
             _az_match = _AZ_LINE_RE.search(line)
             if _az_match:
                 az_value = _clean_az_value(_normalize_ws(_az_match.group(1)).strip())
@@ -905,7 +916,7 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         }
                     )
 
-            # Gericht: "Amtsgericht Frankfurt", "Landgericht Berlin", "OLG München"
+            # Court ("Gericht"): "Amtsgericht Frankfurt", "Landgericht Berlin", "OLG München"
             _g_match = _GERICHT_RE.search(line)
             if _g_match:
                 gericht_value = _normalize_ws(_g_match.group(1))
@@ -919,11 +930,11 @@ def build_evidence_map(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         }
                     )
 
-    # FIX 3: Filter Gericht-Treffer die nur auf der letzten Seite eines Mehrseiten-Segments
-    # stehen. Diese kommen meist aus dem nächsten Segment (Cross-Segment-Kontamination).
-    # Einzelseiten-Segmente werden nicht gefiltert.
-    # Bei Segmenten mit <= 3 Seiten: Filter NICHT anwenden – kurze Dokumente haben
-    # Gerichtsstandklauseln oft in den Schlussbestimmungen (letzte Seite).
+    # FIX 3: filter court ("Gericht") matches that appear only on the last page of a
+    # multi-page segment. These usually originate from the next segment
+    # (cross-segment contamination). Single-page segments are not filtered.
+    # For segments with <= 3 pages: do NOT apply the filter – short documents often
+    # place jurisdiction clauses in the closing provisions (last page).
     if len(searchable_pages) > 3:
         last_page_no = _get_page_no(searchable_pages[-1])
         gericht_pages = {e["page"] for e in evidence if e["field"] == "gericht"}

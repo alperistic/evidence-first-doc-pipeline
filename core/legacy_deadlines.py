@@ -48,7 +48,7 @@ _KUENDIGUNGSFRIST_TRIGGERS = (
     "verlänger",
     "verlaenger",
 )
-# Referenzdatum: reines Bezugsdatum ohne Handlungsbedarf
+# Reference date: pure date-of-record with no action required
 _REFERENCE_DATE_TRIGGERS = (
     "rechnungsdatum",
     "leistungsdatum",
@@ -71,22 +71,22 @@ _REFERENCE_DATE_TRIGGERS = (
     "gewaehrt",
     "per überweisung",  # "bezahlt per Überweisung vom 16.06.2024"
     "per ueberweisung",
-    "hamburg, den",  # Briefkopf-Datum
+    "hamburg, den",  # letterhead date
     "münchen, den",
     "muenchen, den",
     "berlin, den",
     "frankfurt, den",
 )
 
-# Rechnungsnummer-Pattern: RE-YYYY-NNNN oder allgemein RE-\d+ → Referenzdatum-Kandidat.
-# PR10: Format RE-\d{4}-\d{3,4} (z.B. "RE-2026-0142") explizit abgedeckt (war vorher nur RE-\d+).
+# Invoice-number pattern: RE-YYYY-NNNN or generic RE-\d+ → reference-date candidate.
+# PR10: format RE-\d{4}-\d{3,4} (e.g. "RE-2026-0142") explicitly covered (previously only RE-\d+).
 _INVOICE_ID_RE = re.compile(
-    r"\b(?:RE|RG|INV|NR)[-/]?\d{4}[-/]\d{3,4}"  # RE-YYYY-NNNN (spezifisches Format)
-    r"|\b(?:RE|RG|INV|NR)[-/]?\d+",              # Allgemeines Format: RE-XXX (Fallback)
+    r"\b(?:RE|RG|INV|NR)[-/]?\d{4}[-/]\d{3,4}"  # RE-YYYY-NNNN (specific format)
+    r"|\b(?:RE|RG|INV|NR)[-/]?\d+",              # generic format: RE-XXX (fallback)
     re.IGNORECASE,
 )
 
-# Verfahrensfrist-Trigger: Audit-Vorankündigung etc. → NICHT Kündigungsfrist
+# Procedural-deadline trigger: audit pre-notice etc. → NOT a termination deadline
 _VERFAHRENSFRIST_TRIGGERS = (
     "vorankündigung",
     "vorankuendigung",
@@ -99,8 +99,8 @@ _VERFAHRENSFRIST_TRIGGERS = (
     "vorankuendigungsfrist",
 )
 
-# PR12: Verlängerungs-/Kündigungsklausel-Pattern.
-# Matcht: "verlängert sich um 12 Monate ... Frist von 3 Monaten"
+# PR12: renewal/termination clause pattern.
+# Matches: "verlängert sich um 12 Monate ... Frist von 3 Monaten"
 _RENEWAL_TERMINATION_RE = re.compile(
     r"verl(?:ä|ae)nger\w*\s+(?:\w+\s+){0,5}um\s+"
     r"(?P<verlaengerung>\d+\s*(?:monate?n?|wochen?|tage?n?|jahre?n?))"
@@ -151,43 +151,43 @@ def _deadline_label_from_text(text: str) -> str:
 
 
 _NON_FRIST_ITEM_KEYWORDS: tuple[str, ...] = (
-    # Geburtsdaten
+    # Birth dates
     "geboren", "geb.", "geburtsdatum", "geburtstag",
-    # Beschäftigungsbeginn / Weiterbeschäftigung
+    # Employment start / continued employment
     "beschäftigt seit", "beschaeftigt seit", "eingestellt am",
     "eintritt", "beschäftigungsbeginn", "beschaeftigungsbeginn",
     "tätig seit", "taetig seit", "arbeitsverhältnis seit", "arbeitsverhaeltnis seit",
     "angestellt seit", "arbeitsbeginn", "seit dem", "in kraft seit",
     "weiterbeschäftigung", "weiterbeschaeftigung",
-    # Gründungsdaten
+    # Founding dates
     "gegründet", "gegruendet", "gründung", "gruendung",
     "eingetragen", "eintragung", "registriert",
 )
 
 
 def classify_date_category(text: str, label: str = "") -> str:
-    """Klassifiziert ein Datum als 'Frist', 'Termin' oder 'Referenzdatum'.
+    """Classifies a date as 'Frist' (deadline), 'Termin' (appointment), or 'Referenzdatum' (reference date).
 
-    - Frist: Datum bis zu dem gehandelt werden muss (Zahlungsfrist, Kündigungsfrist)
-    - Termin: konkreter Termin mit Handlungsbedarf (Übergabetermin, Mietbeginn)
-    - Referenzdatum: reines Bezugsdatum ohne Handlungsbedarf (Rechnungsdatum, Vertragsdatum)
+    - Frist: date by which action must be taken (payment deadline, termination deadline)
+    - Termin: concrete appointment requiring action (handover date, lease start)
+    - Referenzdatum: pure date-of-record with no action required (invoice date, contract date)
 
-    Priorität: Referenzdatum-Trigger werden zuerst geprüft, weil Begriffe wie
-    "Rechnungsdatum" auch das Wort "fällig" im Umfeld haben können.
-    FIX 1/3: Geburtsdaten und Beschäftigungsbeginn-Daten werden als Referenzdatum klassifiziert.
+    Priority: reference-date triggers are checked first, because terms like
+    "Rechnungsdatum" (invoice date) can also have the word "fällig" (due) nearby.
+    FIX 1/3: birth dates and employment-start dates are classified as reference dates.
     """
     context = f"{label} {text}".strip()
-    # FIX 1/3: Geburtsdaten / Beschäftigungsbeginn / Gründungsdaten → Referenzdatum (nicht Frist)
+    # FIX 1/3: birth dates / employment start / founding dates → reference date (not deadline)
     context_l = context.lower()
     for kw in _NON_FRIST_ITEM_KEYWORDS:
         if kw in context_l:
             return "Referenzdatum"
-    # 0) Rechnungsnummer-Pattern ("RE-XXXX vom Datum") → immer Referenzdatum
-    # PR10 Root Cause (String 5): Wenn der volle Paragraphen-Kontext übergeben wird,
-    # enthält er sowohl die Zahlungsfrist ("Zahlung bis spätestens 17.06.2026") als
-    # auch das Rechnungsdatum ("RE-2026-0142 vom 24.05.2026"). has_strong_deadline wird
-    # durch die Zahlungsfrist True, obwohl das klassifizierte Datum (label) das
-    # Rechnungsdatum ist. Fix: "vom <label>" Proximity-Check hat Vorrang.
+    # 0) Invoice-number pattern ("RE-XXXX vom Datum") → always a reference date
+    # PR10 root cause (string 5): when the full paragraph context is passed in,
+    # it contains both the payment deadline ("Zahlung bis spätestens 17.06.2026") and
+    # the invoice date ("RE-2026-0142 vom 24.05.2026"). has_strong_deadline is set
+    # True by the payment deadline, even though the classified date (label) is the
+    # invoice date. Fix: "vom <label>" proximity check takes precedence.
     if _INVOICE_ID_RE.search(context):
         label_stripped = str(label or "").strip()
         if label_stripped:
@@ -199,21 +199,21 @@ def classify_date_category(text: str, label: str = "") -> str:
         ))
         if not has_strong_deadline:
             return "Referenzdatum"
-    # 1) Referenzdatum hat Vorrang (außer bei expliziten Frist-Triggern)
+    # 1) Reference date takes precedence (unless explicit deadline triggers are present)
     has_reference = _contains_trigger(context, _REFERENCE_DATE_TRIGGERS)
     has_deadline = _contains_trigger(context, _DEADLINE_CONTEXT_TRIGGERS)
     has_kuendigung = _contains_trigger(context, _KUENDIGUNGSFRIST_TRIGGERS)
     if has_reference and not has_deadline and not has_kuendigung:
         return "Referenzdatum"
-    # 2) Verfahrensfrist (Audit-Vorankündigung etc.) → Frist, aber NICHT Kündigungsfrist
+    # 2) Procedural deadline (audit pre-notice etc.) → deadline, but NOT a termination deadline
     if _contains_trigger(context, _VERFAHRENSFRIST_TRIGGERS):
         return "Frist"
-    # 3) Explizite Frist-Trigger
+    # 3) Explicit deadline triggers
     if has_deadline:
         return "Frist"
     if has_kuendigung:
         return "Frist"
-    # 4) Termin-Trigger: Übergabe, Beginn, Anhörung etc.
+    # 4) Appointment triggers: handover, start, hearing etc.
     termin_triggers = (
         "übergabe", "uebergabe", "mietbeginn", "arbeitsbeginn",
         "vertragsbeginn", "anhörung", "anhoerung", "verhandlung",
@@ -227,7 +227,7 @@ def classify_date_category(text: str, label: str = "") -> str:
 def _resolve_deadline_label(raw_label: str, context: str) -> str:
     label = str(raw_label or "").strip()
     context_text = str(context or "")
-    # Verfahrensfrist (Audit-Vorankündigung) darf nie als Kündigungsfrist erscheinen
+    # A procedural deadline (audit pre-notice) must never appear as a termination deadline
     has_verfahrensfrist = _contains_trigger(context_text, _VERFAHRENSFRIST_TRIGGERS)
     has_kuendigung_trigger = _contains_trigger(context_text, _KUENDIGUNGSFRIST_TRIGGERS)
     if "kündigungsfrist" in label.lower() or "kuendigungsfrist" in label.lower():
@@ -286,14 +286,14 @@ def _render_legacy_deadline_text(item: dict[str, Any]) -> str:
     text = str(item.get("text", "") or "").strip()
     if not text:
         return ""
-    # Bug 1 (P0): Einträge ohne parsebares DD.MM.YYYY-Datum weglassen.
-    # Verhindert, dass Dokumenttitel / Segment-Header als Frist/Termin erscheinen.
+    # Bug 1 (P0): drop entries without a parseable DD.MM.YYYY date.
+    # Prevents document titles / segment headers from appearing as a deadline/appointment.
     date_match = _first_date_match(text)
     if not date_match:
         return ""
-    # Bug 2b (P0): Geburtsdaten, Beschäftigungsbeginn und Referenzdaten filtern.
-    # Bekannte Non-Frist-Keywords (Weiterbeschäftigung, Eintritt, …) sofort ausfiltern.
-    # Datum < 2024 ohne starken Fristkontext ebenfalls unterdrücken (Eintrittsjahr 2019 etc.).
+    # Bug 2b (P0): filter out birth dates, employment-start dates, and reference dates.
+    # Filter out known non-deadline keywords (continued employment, hire date, …) immediately.
+    # Also suppress dates < 2024 without a strong deadline context (hire year 2019 etc.).
     year_raw = date_match.group(3)
     year = int(year_raw)
     if len(year_raw) == 2:
@@ -359,7 +359,7 @@ def dedupe_legacy_deadline_items(items: list[dict[str, Any]], *, limit: int = 25
 
 
 def _resolve_date_category(item: dict[str, Any]) -> str:
-    """Gibt die date_category zurück — LLM-Wert hat Vorrang vor classify_date_category."""
+    """Returns the date_category — the LLM-provided value takes precedence over classify_date_category."""
     llm_category = str(item.get("date_category", "") or "").strip()
     if llm_category in ("Frist", "Termin", "Referenzdatum"):
         return llm_category
@@ -369,7 +369,7 @@ def _resolve_date_category(item: dict[str, Any]) -> str:
 
 
 def build_legacy_deadlines(items: list[dict[str, Any]], *, limit: int = 25) -> list[str]:
-    """Baut die Legacy-Deadline-Strings.  Referenzdaten werden aussortiert."""
+    """Builds the legacy deadline strings. Reference dates are filtered out."""
     out: list[str] = []
     seen: set[str] = set()
     for item in dedupe_legacy_deadline_items(items, limit=limit):
@@ -389,7 +389,7 @@ def build_legacy_deadlines(items: list[dict[str, Any]], *, limit: int = 25) -> l
 
 
 def build_reference_dates(items: list[dict[str, Any]], *, limit: int = 10) -> list[str]:
-    """Extrahiert nur Referenzdaten (Rechnungsdatum, Vertragsdatum etc.)."""
+    """Extracts only reference dates (invoice date, contract date, etc.)."""
     out: list[str] = []
     seen: set[str] = set()
     for item in dedupe_legacy_deadline_items(items, limit=limit):
@@ -409,11 +409,11 @@ def build_reference_dates(items: list[dict[str, Any]], *, limit: int = 10) -> li
 
 
 def extract_renewal_and_termination(text: str) -> list[tuple[str, str]]:
-    """Extrahiert Verlängerungs- und Kündigungsfristen aus Klauseln der Form
-    'verlängert sich um X Monate ... Frist von Y Monaten'.
+    """Extracts renewal and termination deadlines from clauses of the form
+    'verlängert sich um X Monate ... Frist von Y Monaten' (renews for X months ... Y months' notice).
 
     Returns:
-        Liste von (wert, label)-Tupeln, wobei label in
+        List of (value, label) tuples, where label is one of
         {'kuendigungsfrist', 'verlaengerung'}.
     """
     results: list[tuple[str, str]] = []

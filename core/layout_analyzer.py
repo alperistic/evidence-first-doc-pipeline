@@ -1,8 +1,8 @@
-"""core/layout_analyzer.py – Layout-Analyse und Boundary-Scoring.
+"""core/layout_analyzer.py – Layout analysis and boundary scoring.
 
-Extrahiert aus core/segmenter.py (W2 God-File-Split).
-Enthält Marker-Konstanten, Scoring-Funktionen für Seitengrenzen,
-und die Anlage-/Vertrags-Erkennungslogik.
+Extracted from core/segmenter.py (W2 god-file split).
+Contains marker constants, scoring functions for page boundaries,
+and the attachment/contract-continuation detection logic.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from typing import Any
 from core.doctype_classifier import _DOC_TYPE_KEYWORDS
 
 # ---------------------------------------------------------------------------
-# Marker-Konstanten
+# Marker constants
 # ---------------------------------------------------------------------------
 
 _START_MARKERS: tuple[tuple[str, re.Pattern[str], float], ...] = (
@@ -99,7 +99,7 @@ _GENERIC_STRONG_MARKERS = {
 }
 
 # ---------------------------------------------------------------------------
-# Anlage / Vertrags-Continuation
+# Attachment / contract continuation
 # ---------------------------------------------------------------------------
 
 _ATTACHMENT_PAGE_RE = re.compile(
@@ -116,7 +116,7 @@ _VERTRAG_DOC_TYPES = {"Vertrag", "Ratenzahlungsvereinbarung", "Kaufvertrag", "Mi
 
 
 # ---------------------------------------------------------------------------
-# Hilfsfunktionen
+# Helper functions
 # ---------------------------------------------------------------------------
 
 def _normalize_ws(text: str) -> str:
@@ -156,7 +156,7 @@ def _page_metrics(lines: list[str], text: str) -> dict[str, float]:
 
 
 # ---------------------------------------------------------------------------
-# Scoring-Funktionen
+# Scoring functions
 # ---------------------------------------------------------------------------
 
 def _marker_score(top_text: str) -> tuple[float, list[str]]:
@@ -358,14 +358,14 @@ def _header_footer_shift_score(
 
 
 # ---------------------------------------------------------------------------
-# Seitenklassifikation
+# Page classification
 # ---------------------------------------------------------------------------
 
 def is_attachment_page(text: str) -> bool:
-    """Erkennt Seiten die eine Anlage einleiten (z.B. 'Anlage A:', 'Anlage 1:').
+    """Detects pages that introduce an attachment (e.g. 'Anlage A:', 'Anlage 1:').
 
-    Anlagen sind Bestandteile des übergeordneten Dokuments und dürfen keine
-    eigenständigen Dokumentgrenzen erzeugen.
+    Attachments are part of the parent document and must not create their
+    own separate document boundaries.
     """
     for line in _non_empty_lines(text)[:10]:
         if _ATTACHMENT_PAGE_RE.match(line):
@@ -388,7 +388,7 @@ def _title_guess(page_text: str, doc_type_guess: str, fallback_prefix: str = "Do
 
 
 # ---------------------------------------------------------------------------
-# Hilfsfunktion (lokal, um Zirkelimporte zu vermeiden)
+# Helper function (kept local to avoid circular imports)
 # ---------------------------------------------------------------------------
 
 def _dedupe_ordered(values: list[str]) -> list[str]:

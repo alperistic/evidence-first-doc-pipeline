@@ -1,6 +1,6 @@
 """
-extractor.py – PDF/DOCX Text-Extraktion
-Kein Dokument wird persistiert; gibt nur den extrahierten Text zurück.
+extractor.py – PDF/DOCX text extraction
+No document is persisted; only the extracted text is returned.
 """
 
 import hashlib
@@ -39,11 +39,11 @@ class ExtractionResult:
 
 
 def normalize_extracted_text(text: str) -> str:
-    """Normalisiert extrahierten Text für stabile Weiterverarbeitung/Export."""
+    """Normalizes extracted text for stable downstream processing/export."""
     normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
-    # Platzhalter-Zeilenbruch: [PERSO\nN_C] -> [PERSON_C]
+    # Placeholder line break: [PERSO\nN_C] -> [PERSON_C]
     normalized = re.sub(r"\[(\w+)\n(\w+)\]", r"[\1\2]", normalized)
-    # Silbentrennung am Zeilenende entfernen: Bewe-\nführung -> Beweführung
+    # Remove hyphenation at line end: Bewe-\nführung -> Beweführung
     normalized = re.sub(r"(\w)-\n(\w)", r"\1\2", normalized)
 
     paragraphs = re.split(r"\n{2,}", normalized)
@@ -52,7 +52,7 @@ def normalize_extracted_text(text: str) -> str:
         part = para.strip()
         if not part:
             continue
-        # Einzelne Zeilenumbrüche innerhalb eines Absatzes entfernen
+        # Remove single line breaks within a paragraph
         part = re.sub(r"(\w)\n(\w)", r"\1 \2", part)
         part = part.replace("\n", " ")
         part = re.sub(r"[ \t]{2,}", " ", part).strip()
@@ -73,12 +73,12 @@ def _normalize_pages_text(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def extract_text(file_bytes: bytes, filename: str) -> str:
-    """Extrahiert Plaintext aus PDF oder DOCX (in-memory, kein Speichern)."""
+    """Extracts plain text from PDF or DOCX (in-memory, nothing is saved to disk)."""
     return extract_text_with_meta(file_bytes, filename).text
 
 
 def extract_text_with_meta(file_bytes: bytes, filename: str) -> ExtractionResult:
-    """Extrahiert Plaintext inkl. Metadaten zur verwendeten Methode."""
+    """Extracts plain text plus metadata about the extraction method used."""
     suffix = Path(filename).suffix.lower()
     if suffix == ".pdf":
         direct_pages = _normalize_pages_text(_extract_pdf_pages(file_bytes))
@@ -96,7 +96,7 @@ def extract_text_with_meta(file_bytes: bytes, filename: str) -> ExtractionResult
                 chars_total=len(direct_text),
             )
 
-        # OCR-Fallback nur für gescannte/kaum extrahierbare PDFs
+        # OCR fallback only for scanned/barely extractable PDFs
         ocr_pages = _normalize_pages_text(_extract_pdf_via_azure_read_pages(file_bytes))
         ocr_text = normalize_extracted_text("\n\n".join(p["text"] for p in ocr_pages).strip())
         if ocr_text:
@@ -135,7 +135,7 @@ def extract_text_with_meta(file_bytes: bytes, filename: str) -> ExtractionResult
             chars_total=len(docx_text),
         )
     else:
-        raise ValueError(f"Nicht unterstütztes Dateiformat: {suffix}")
+        raise ValueError(f"Unsupported file format: {suffix}")
 
 
 def _extract_pdf(file_bytes: bytes) -> str:
@@ -146,7 +146,7 @@ def _extract_pdf(file_bytes: bytes) -> str:
 
 def _extract_pdf_pages(file_bytes: bytes) -> list[dict[str, Any]]:
     if PdfReader is None:
-        raise ModuleNotFoundError("pypdf ist nicht installiert; PDF-Extraktion nicht verfügbar.")
+        raise ModuleNotFoundError("pypdf is not installed; PDF extraction unavailable.")
     reader = PdfReader(io.BytesIO(file_bytes))
     return [
         {
@@ -160,14 +160,14 @@ def _extract_pdf_pages(file_bytes: bytes) -> list[dict[str, Any]]:
 
 def _extract_docx(file_bytes: bytes) -> str:
     if Document is None:
-        raise ModuleNotFoundError("python-docx ist nicht installiert; DOCX-Extraktion nicht verfügbar.")
+        raise ModuleNotFoundError("python-docx is not installed; DOCX extraction unavailable.")
     doc = Document(io.BytesIO(file_bytes))
     paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
     return "\n\n".join(paragraphs).strip()
 
 
 def _is_text_sufficient(text: str) -> bool:
-    """Heuristik: hat die PDF genug extrahierbaren Text, damit OCR nicht nötig ist?"""
+    """Heuristic: does the PDF have enough extractable text that OCR isn't needed?"""
     min_chars = get_config().ocr_min_pdf_text_chars
     alnum_chars = sum(ch.isalnum() for ch in text)
     return alnum_chars >= min_chars
@@ -183,8 +183,8 @@ def _extract_pdf_via_azure_read(file_bytes: bytes) -> str:
 
 def _extract_pdf_via_azure_read_pages(file_bytes: bytes) -> list[dict[str, Any]]:
     """
-    OCR-Fallback via Azure AI Document Intelligence (prebuilt-read).
-    Kein Dokument wird lokal gespeichert; Upload erfolgt direkt aus dem Speicher.
+    OCR fallback via Azure AI Document Intelligence (prebuilt-read).
+    No document is saved locally; the upload is sent directly from memory.
     """
     cfg = get_config()
     endpoint = cfg.azure_doc_intel_endpoint.rstrip("/")
@@ -194,7 +194,7 @@ def _extract_pdf_via_azure_read_pages(file_bytes: bytes) -> list[dict[str, Any]]
     if not endpoint or not api_key:
         return []
     if requests is None:
-        raise ModuleNotFoundError("requests ist nicht installiert; OCR-Fallback nicht verfügbar.")
+        raise ModuleNotFoundError("requests is not installed; OCR fallback unavailable.")
 
     analyze_url = (
         f"{endpoint}/documentintelligence/documentModels/prebuilt-read:analyze"
@@ -254,5 +254,5 @@ def _extract_pdf_via_azure_read_pages(file_bytes: bytes) -> list[dict[str, Any]]
 
 
 def compute_sha256(file_bytes: bytes) -> str:
-    """SHA256-Hash der Rohdaten – einzige persistierte Referenz auf das Dokument."""
+    """SHA-256 hash of the raw bytes – the only reference to the document that is persisted."""
     return hashlib.sha256(file_bytes).hexdigest()

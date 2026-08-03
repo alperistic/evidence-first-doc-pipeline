@@ -1,15 +1,15 @@
 """
-core/analyzer.py – LLM-Analyse-Funktionen.
+core/analyzer.py - LLM analysis functions.
 
-Enthält Chunking und alle öffentlichen Analyse-Funktionen
+Contains chunking and all public analysis functions
 (analyze_document, classify, generate_aktenvermerk,
-summarize_*, verify_claim_mappings, …).
+summarize_*, verify_claim_mappings, ...).
 
-Rubrum-Logik lebt in core/rubrum.py.
-Citation-Matching lebt in core/citation.py.
-Infrastruktur (_invoke_json_task, _get_client, …) lebt in core/llm_client.py.
-Datenmodelle leben in core/models.py.
-Evidence-Logik lebt in core/evidence.py.
+Rubrum logic lives in core/rubrum.py.
+Citation matching lives in core/citation.py.
+Infrastructure (_invoke_json_task, _get_client, ...) lives in core/llm_client.py.
+Data models live in core/models.py.
+Evidence logic lives in core/evidence.py.
 """
 
 import json
@@ -446,8 +446,8 @@ def _heuristic_classify(text: str) -> str | None:
 
 def classify(text: str, max_chars: int | None = None) -> str:
     """
-    Klassifiziert ein Dokument automatisch in eine der definierten Klassen.
-    Gibt einen der Strings aus DOC_CLASSES zurück, Fallback: 'Sonstiges'.
+    Automatically classifies a document into one of the defined classes.
+    Returns one of the strings from DOC_CLASSES, fallback: 'Sonstiges'.
     """
     from core.prompts import CLASSIFICATION_PROMPT, DOC_CLASSES
 
