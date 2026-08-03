@@ -621,6 +621,19 @@ _GENERIC_ECKDATEN_LABELS: frozenset[str] = frozenset({
     "miete", "betrag", "zahlung", "mietzahlung",
 })
 
+# Labels that name no subject matter at all - they say "there is a number here"
+# and nothing else. Only these may be dropped from the LLM items when another
+# label already carries the same amount.
+#
+# Deliberately narrower than _GENERIC_ECKDATEN_LABELS: "Miete" is generic as a
+# regex fallback, but it does name a subject matter. "Miete: EUR 4.200,00"
+# alongside "Rückstand: EUR 4.200,00" is one month's rent in arrears - two
+# distinct facts that happen to share an amount, not a duplicate. Dropping one
+# would lose information rather than tidy the list.
+_CONTENTLESS_ECKDATEN_LABELS: frozenset[str] = frozenset({
+    "betrag", "zahlung",
+})
+
 
 def _merge_llm_regex_eckdaten(
     llm_items: list[dict],
@@ -629,7 +642,10 @@ def _merge_llm_regex_eckdaten(
 ) -> list[dict]:
     """FIX 4: Merge LLM-eckdaten with specific-label regex evidence items.
 
-    - LLM items are always kept.
+    - LLM items are kept, except contentless-label ones ('Betrag', 'Zahlung') whose
+      amount is already covered by a labelled item from either source - those are
+      duplicates in the rendered list. Such an item is kept when its amount has no
+      labelled counterpart, so no value is silently dropped.
     - Regex items with generic labels ('Miete', 'Betrag', 'Zahlung') are suppressed
       when an LLM item already covers the same canonical amount.
     - Regex items with specific labels ('Rückstand', 'Schadensersatz', 'Kaution')
@@ -656,9 +672,47 @@ def _merge_llm_regex_eckdaten(
     # FIX 2: Relabel "Mietbeginn" → "Beginn" when doc is not a Miet/Räumung document.
     doc_type_l = str(doc_type or "").lower()
     _is_miet_doc = any(k in doc_type_l for k in ("miet", "räum", "raeumung"))
+
+    # Amounts that some *specific* label already accounts for. Collected from both
+    # sources up front, so the outcome does not depend on the order in which the
+    # two loops below happen to append. A generic entry ("Betrag: EUR 2.550,00")
+    # carries no information once "Kaution: EUR 2.550,00" is on the list - it just
+    # reads as a duplicate. Generic entries whose amount has no specific
+    # counterpart are kept: dropping those would lose a value entirely.
+    # _norm_amount_canonical also returns a key for dates and plain words, so it
+    # alone is too broad a match here - restrict the comparison to actual amounts.
+    def _amount_key(raw: str) -> str | None:
+        text = str(raw or "")
+        if not re.search(r"\d[\d.]*,\d{2}\b", text):
+            return None
+        return _norm_amount_canonical(text) or None
+
+    specific_amounts: set[str] = set()
+    for item in llm_items:
+        lbl = str(item.get("label", "") or "").lower()
+        ca = _amount_key(item.get("wert", ""))
+        if ca and lbl and lbl not in _CONTENTLESS_ECKDATEN_LABELS:
+            specific_amounts.add(ca)
+    for ev in evidence_items or []:
+        value = str(ev.get("value", "") or "").strip()
+        if not value or value == "missing":
+            continue
+        lbl = _human_label_for_evidence(
+            str(ev.get("field", "") or "").lower(), value,
+            str(ev.get("quote", "") or ""), doc_type,
+        )
+        ca = _amount_key(value)
+        if ca and lbl and lbl.lower() not in _CONTENTLESS_ECKDATEN_LABELS:
+            specific_amounts.add(ca)
+
     merged = []
     for item in llm_items:
-        if str(item.get("label", "") or "") == "Mietbeginn" and not _is_miet_doc:
+        label = str(item.get("label", "") or "")
+        if label.lower() in _CONTENTLESS_ECKDATEN_LABELS:
+            canonical = _amount_key(item.get("wert", ""))
+            if canonical and canonical in specific_amounts:
+                continue
+        if label == "Mietbeginn" and not _is_miet_doc:
             item = dict(item)
             item["label"] = "Beginn"
         merged.append(item)

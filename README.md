@@ -17,9 +17,13 @@ management) where an unsourced claim is worse than no answer at all.
 ![The result view: verification metrics across the top, and every extracted value below
 carrying the page and the verbatim quote it came from.](docs/screenshot-result.png)
 
-*Analysing a synthetic German lease in demo mode — no credentials, no real document. The
-percentages are measured, not decorative: they report how many of the model's claims could
-actually be traced back to the source text.*
+*Analysing a synthetic German lease in demo mode — no credentials, no real document.*
+
+*The percentages are measured, not decorative. **"Claims with verified source: 73%"** is
+the point of the project, not a defect: the system checked every claim the model made,
+traced 73% of them back to a verbatim quote in the source, and says so instead of
+presenting all of them as equally sound. The alternative — the default for most LLM
+summarizers — is 100% confident output with no way to tell which quarter is unfounded.*
 
 ---
 
@@ -221,7 +225,7 @@ services/               orchestration between UI and pipeline
 ui/                     Streamlit render layer
 workflows/              document-type-specific analysis flows
 samples/                synthetic sample documents
-tests/                  56 test modules
+tests/                  unit + smoke tests (~1100 cases)
 ```
 
 ---
