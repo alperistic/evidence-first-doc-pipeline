@@ -17,7 +17,7 @@ from time import perf_counter
 # Repo-Root ins sys.path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-PDF_PATH = Path("pdfs/LATE_Test_Arbeitsrecht_Kuendigung_Bergmann.pdf")
+PDF_PATH = Path("samples/03_klageschrift_synthetic.pdf")
 
 _SEP = "=" * 64
 

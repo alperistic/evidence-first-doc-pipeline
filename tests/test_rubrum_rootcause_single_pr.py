@@ -61,9 +61,15 @@ def _load_mixed_fixture_pages(path: Path) -> list[dict]:
 
 
 class RubrumRootcauseSinglePRTests(unittest.TestCase):
+    """
+    NOTE (portfolio repo): these tests run against a generated synthetic
+    sample (samples/03_klageschrift_synthetic.pdf, produced by
+    scripts/generate_samples.py) instead of a real Klageschrift document.
+    """
+
     def _debug_klageschrift_redacted_head(self) -> dict:
-        pdf_path = Path("pdfs/KlageschriftPDF9Test.pdf")
-        self.assertTrue(pdf_path.exists(), "Fixture fehlt: pdfs/KlageschriftPDF9Test.pdf")
+        pdf_path = Path("samples/03_klageschrift_synthetic.pdf")
+        self.assertTrue(pdf_path.exists(), "Fixture fehlt: samples/03_klageschrift_synthetic.pdf")
         extraction = extract_text_with_meta(pdf_path.read_bytes(), pdf_path.name)
         stripped_pages = _searchable_pages_without_repeating_edges(extraction.pages)
         stripped_text = "\n\n".join(str(page.get("text", "") or "") for page in stripped_pages)
@@ -81,25 +87,48 @@ class RubrumRootcauseSinglePRTests(unittest.TestCase):
         first_120 = redacted_text.splitlines()[:120]
 
         marker_keys = ("Klägerin:", "vertreten durch:", "Beklagter:")
+        names = ("Erika Mustermann", "Max Beispiel", "Anna Beispiel")
+        addresses = ("Musterstraße 1", "Beispielweg 2", "Musterweg 3")
         return {
             "first_120_lines": first_120,
+            "redacted_text": redacted_text,
             "pre_markers": {key: (key in stripped_text) for key in marker_keys},
-            "post_markers": {key: (key in redacted_text) for key in marker_keys},
+            "names_in_redacted": {name: (name in redacted_text) for name in names},
+            "addresses_in_redacted": {addr: (addr in redacted_text) for addr in addresses},
         }
 
-    def test_debug_klageschrift_markers_after_strip_and_redaction(self):
+    def test_klageschrift_names_and_addresses_are_pseudonymized_after_redaction(self):
+        """Rubrum role labels are present in the source text (the
+        rubrum-override code path depends on them existing), and the
+        personal names/addresses behind those labels do not survive into
+        the redacted text -- they are replaced by placeholder tokens."""
         debug = self._debug_klageschrift_redacted_head()
         self.assertTrue(debug["first_120_lines"], "Debug-Head ist leer.")
+
+        # Rubrum role labels must exist in the SOURCE text: the
+        # rubrum-override code path (core/analyzer.apply_rubrum_parties_override)
+        # specifically looks for this marker structure.
         self.assertTrue(debug["pre_markers"]["Klägerin:"])
         self.assertTrue(debug["pre_markers"]["vertreten durch:"])
         self.assertTrue(debug["pre_markers"]["Beklagter:"])
-        self.assertFalse(debug["post_markers"]["Klägerin:"])
-        self.assertFalse(debug["post_markers"]["vertreten durch:"])
-        self.assertTrue(debug["post_markers"]["Beklagter:"])
+
+        # None of the real personal names or street addresses may survive
+        # redaction, regardless of which placeholder scheme masks them.
+        for name, present in debug["names_in_redacted"].items():
+            self.assertFalse(present, f"Name {name!r} ist im redigierten Text noch vorhanden.")
+        for addr, present in debug["addresses_in_redacted"].items():
+            self.assertFalse(present, f"Adresse {addr!r} ist im redigierten Text noch vorhanden.")
+
+        # Placeholder tokens must be present in their place: PERSON for the
+        # Klägerin/Beklagter/RAin names, ADDR for the street addresses, ORG
+        # for the law firm ("Beispiel & Partner GbR").
+        self.assertRegex(debug["redacted_text"], r"\[PERSON_[0-9A-Z]+\]")
+        self.assertRegex(debug["redacted_text"], r"\[ADDR_[0-9A-Z]+\]")
+        self.assertRegex(debug["redacted_text"], r"\[ORG_[0-9A-Z]+\]")
 
     def test_integration_like_klageschrift_pdf_rubrum_override(self):
-        pdf_path = Path("pdfs/KlageschriftPDF9Test.pdf")
-        self.assertTrue(pdf_path.exists(), "Fixture fehlt: pdfs/KlageschriftPDF9Test.pdf")
+        pdf_path = Path("samples/03_klageschrift_synthetic.pdf")
+        self.assertTrue(pdf_path.exists(), "Fixture fehlt: samples/03_klageschrift_synthetic.pdf")
         extraction = extract_text_with_meta(pdf_path.read_bytes(), pdf_path.name)
         source_pages = [dict(page) for page in extraction.pages]
         source_pages_by_no = {_page_no(page): page for page in source_pages if _page_no(page)}

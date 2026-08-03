@@ -203,17 +203,29 @@ def _find_quote_slice(page_text: str, candidate_text: str) -> str | None:
 
 
 def _iter_windows(page_text: str, max_words: int = 20, step: int = 1) -> list[str]:
+    return [text for text, _span in _iter_windows_with_span(page_text, max_words=max_words, step=step)]
+
+
+def _iter_windows_with_span(
+    page_text: str, max_words: int = 20, step: int = 1
+) -> list[tuple[str, tuple[int, int]]]:
+    """Like _iter_windows, but also yields each window's (start, end) char offsets.
+
+    Needed so callers can tell whether two scored windows are actually distinct
+    locations in the text, or just overlapping/nested slices of the same match
+    (e.g. "spätestens zum X" vs "bis spätestens zum X" starting one word apart).
+    """
     tokens = list(re.finditer(r"\S+", page_text or ""))
     if not tokens:
         return []
 
-    windows: list[str] = []
+    windows: list[tuple[str, tuple[int, int]]] = []
     end_limit = min(max_words, len(tokens))
     for window_words in range(3, end_limit + 1):
         for start in range(0, len(tokens) - window_words + 1, step):
             start_pos = tokens[start].start()
             end_pos = tokens[start + window_words - 1].end()
-            windows.append(page_text[start_pos:end_pos])
+            windows.append((page_text[start_pos:end_pos], (start_pos, end_pos)))
     return windows
 
 
@@ -277,19 +289,42 @@ def _match_citation_candidate(candidate: CitationModel, pages: list[dict[str, An
 
     best_score = -1
     best_match: tuple[int, str] | None = None
+    best_span: tuple[int, int] | None = None
+    best_page_no: int | None = None
     second_best = -1
     candidate_norm = _normalize_for_match(candidate_text)
+    # Collect every scored window (page_no, score, span, text) so the uniqueness
+    # margin can be recomputed below against only non-overlapping competitors.
+    scored_windows: list[tuple[int, float, tuple[int, int], str]] = []
     for page in scoped_pages:
         page_text = page.get("text", "")
         candidate_words = len(re.findall(r"\S+", candidate_text))
         local_max_words = max(3, min(20, candidate_words + 4))
-        for window in _iter_windows(page_text, max_words=local_max_words, step=1):
+        page_no = _get_page_no(page)
+        for window, span in _iter_windows_with_span(page_text, max_words=local_max_words, step=1):
             score = _partial_ratio(candidate_norm, _normalize_for_match(window))
+            scored_windows.append((page_no, score, span, window))
             if score > best_score:
-                second_best = best_score
                 best_score = score
-                best_match = (_get_page_no(page), window)
-            elif score > second_best:
+                best_match = (page_no, window)
+                best_span = span
+                best_page_no = page_no
+
+    # Sliding windows (step=1) heavily overlap, so the raw runner-up is almost
+    # always the same match shifted by one word (e.g. "spätestens zum X" vs
+    # "bis spätestens zum X"). Comparing against that would make the uniqueness
+    # margin reject correct matches. Instead, only windows that do NOT overlap
+    # the best match's span on the same page count as competing candidates —
+    # windows on other pages always count. This keeps the margin meaningful:
+    # a quote that genuinely appears twice in distinct locations is still
+    # flagged as ambiguous and rejected.
+    second_best = -1
+    if best_span is not None:
+        best_start, best_end = best_span
+        for page_no, score, (start, end), _window in scored_windows:
+            if page_no == best_page_no and start < best_end and end > best_start:
+                continue  # overlapping window on the same page - not a distinct location
+            if score > second_best:
                 second_best = score
 
     if best_match and best_score >= 80 and (best_score - second_best) >= 1:

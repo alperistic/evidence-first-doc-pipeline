@@ -5,7 +5,7 @@ Smoke-Tests für den Content-Quality-Datenfluss (PR content-quality-improvements
 
 Kein echter Azure-API-Call: analyze_document und generate_aktenvermerk werden mit
 realistischen Beispiel-Outputs gemockt. Der Rest der Pipeline läuft real:
-  - PDF-Extraktion (kleinste verfügbare 1-Seite-PDF)
+  - PDF-Extraktion (samples/02_mahnschreiben_synthetic.pdf, generierte 1-Seiten-Probe)
   - Redaktion (prepare_for_llm)
   - _process_segment (Orchestrierung inkl. Merge-Logik)
   - render_segmented_aktenvermerk_text (Render)
@@ -40,10 +40,14 @@ from core.export_render import render_segmented_aktenvermerk_text
 # ---------------------------------------------------------------------------
 # Konstanten
 # ---------------------------------------------------------------------------
-_PDFS_DIR = _PROJECT_ROOT / "pdfs"
+_SAMPLES_DIR = _PROJECT_ROOT / "samples"
 
-# Kleinstes verfügbares PDF (1 Seite, ~2,4 KB) – kein echter LLM-Call nötig
-_SMOKE_PDF = _PDFS_DIR / "03_Mahnschreiben_NLBS-2026-0218-03.pdf"
+# Kleinstes verfügbare PDF (1 Seite) – kein echter LLM-Call nötig.
+# Portfolio-Repo: pdfs/03_Mahnschreiben_NLBS-2026-0218-03.pdf (das
+# Original-Fixture) ist nicht Teil dieses öffentlichen Repos; stattdessen
+# läuft dieser Smoke-Test gegen die generierte synthetische
+# Mahnschreiben-Probe (scripts/generate_samples.py), die ebenfalls 1 Seite hat.
+_SMOKE_PDF = _SAMPLES_DIR / "02_mahnschreiben_synthetic.pdf"
 
 _REDACTION_POLICY = {
     "dictionary_entities": [],

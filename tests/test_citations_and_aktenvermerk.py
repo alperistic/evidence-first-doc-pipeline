@@ -150,6 +150,37 @@ class CitationAndAktenvermerkTests(unittest.TestCase):
         self.assertEqual(item["best_evidence"]["page_number"], 2)
         self.assertIn("31.03.2026", item["best_evidence"]["quote_snippet"])
 
+    def test_fuzzy_citation_match_genuinely_ambiguous_across_pages_is_unverified(self):
+        # Same candidate quote plausibly matches two DIFFERENT, non-overlapping
+        # locations (different pages) -> must stay unverified. This guards
+        # against a fix for the overlapping-window bug (above) accidentally
+        # deleting the uniqueness margin instead of narrowing it correctly.
+        pages = [
+            {
+                "page_number": 1,
+                "text": "Die Zahlung ist bis spätestens zum 31.03.2026 auf das benannte Konto zu leisten.",
+            },
+            {
+                "page_number": 3,
+                "text": "Die Zahlung ist bis spätestens zum 31.03.2026 auf das andere Konto zu leisten.",
+            },
+        ]
+        parsed = {
+            "auffaelligkeiten": [
+                {
+                    "text": "Im Dokument steht ein konkreter Zahlungstermin.",
+                    "citations": [
+                        {"quote_snippet": "Zahlung bis spaetestens zum 31.03.2026"}
+                    ],
+                }
+            ]
+        }
+
+        out = verify_citations_for_fields(parsed, pages, ("auffaelligkeiten",))
+        item = out["auffaelligkeiten"][0]
+
+        self.assertEqual(item["citation_status"], "unverified")
+
     def test_aktenvermerk_structure_validation(self):
         valid_payload = {
             "dokumenttyp_parteien": "Mietvertrag zwischen Partei A und Partei B",
