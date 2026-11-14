@@ -121,7 +121,7 @@ class PR13P3VertragsstrafeNotGehaltTests(unittest.TestCase):
 
 
 class PR13P4JahreszahlNichtAlsBetragTests(unittest.TestCase):
-    """P4: Jahreszahl aus Datums-Token soll nicht als Betrag extrahiert werden.
+    r"""P4: Jahreszahl aus Datums-Token soll nicht als Betrag extrahiert werden.
 
     Bug: 'amount_re' dritte Alternative (\d{1,4}...\s*EUR) matcht '2026 EUR',
     wenn direkt nach 'dd.mm.2026' die Währungsangabe folgt.
