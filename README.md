@@ -212,7 +212,7 @@ python -m pytest tests/ -q
 ```
 
 The suite runs offline (no Azure calls) in well under a minute: about 1100 tests. One
-segmenter test is marked `xfail(strict=False)` because it is order-dependent and passes
+segmenter test is marked `xfail(strict=False)` because it is nondeterministic and passes
 in roughly half of isolated runs; it is a known open bug, not a hidden failure.
 
 ---
