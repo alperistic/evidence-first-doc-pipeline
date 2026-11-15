@@ -335,13 +335,14 @@ class TestFristenDataflow:
             )
 
 
+@pytest.fixture(scope="module")
+def rendered_lines(segment_result):
+    rendered = render_segmented_aktenvermerk_text([segment_result])
+    return rendered.splitlines()
+
+
 class TestRenderedOutput:
     """Der gerenderte Aktenvermerk enthält todos (F) und Rückfragen (E)."""
-
-    @pytest.fixture(scope="class")
-    def rendered_lines(self, segment_result):
-        rendered = render_segmented_aktenvermerk_text([segment_result])
-        return rendered.splitlines()
 
     def test_section_f_todos_not_empty(self, rendered_lines):
         """Sektion F TO-DOS ist nicht '– keine'."""

@@ -170,12 +170,23 @@ or compliant with any professional-secrecy statute.
 The repo ships with a demo mode and three synthetic sample documents, so the full pipeline
 runs end to end with no Azure account:
 
+Python 3.11 or newer (the Docker image uses 3.12). From a fresh clone, about a minute of
+installing:
+
 ```bash
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 DOCPIPE_DEMO_MODE=1 streamlit run app.py
 ```
 
-Then upload one of the files from `samples/`.
+Streamlit opens http://localhost:8501. Upload one of the files from `samples/`.
+
+Or with Docker:
+
+```bash
+docker build -t evidence-first .
+docker run --rm -p 8501:8501 -e DOCPIPE_DEMO_MODE=1 evidence-first
+```
 
 In demo mode every Azure call is replaced by a deterministic local stub
 (`core/demo_stub.py`) that builds schema-valid analysis output from real sentences in the
@@ -199,6 +210,10 @@ All configuration is environment-driven and documented inline in `.env.example`.
 pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest tests/ -q
 ```
+
+The suite runs offline (no Azure calls) in well under a minute: about 1100 tests. One
+segmenter test is marked `xfail(strict=False)` because it is nondeterministic and passes
+in roughly half of isolated runs; it is a known open bug, not a hidden failure.
 
 ---
 
@@ -251,6 +266,9 @@ What it is not: a product, a service, or legal advice.
 - OCR quality for scanned documents depends entirely on Azure Document Intelligence.
 - Segmentation of multi-document PDFs is heuristic and can misplace a boundary on unusual
   layouts.
+- The health endpoint (`health.py`, port 8502) is started from `app.py`, and Streamlit
+  only runs `app.py` once a browser session connects. Until the first visit, the Docker
+  `HEALTHCHECK` sees nothing on 8502 and marks the container unhealthy.
 - Demo-mode output is deliberately shallow: the stub selects real sentences from the
   document, so its "key statements" read as sentence fragments. It exists to exercise the
   pipeline, not to imitate a model's writing quality.
