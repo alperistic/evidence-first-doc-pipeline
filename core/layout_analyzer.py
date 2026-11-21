@@ -264,9 +264,15 @@ def _keyword_hits(text: str) -> dict[str, int]:
 def _keyword_score(top_text: str, full_text: str) -> tuple[float, str, list[str]]:
     top_hits = _keyword_hits(top_text)
     full_hits = _keyword_hits(full_text)
+    # Build merged_hits in the declaration order of _DOC_TYPE_KEYWORDS, never in
+    # set order. max() below keeps the first of several equal scores, so this
+    # order is the tie-break - and a set of strings iterates in an order that
+    # changes with PYTHONHASHSEED, which made segmentation differ between runs.
+    # Declaration order is also the tie rule of _guess_doc_type_from_text.
     merged_hits: dict[str, int] = {}
-    for doc_type in set(top_hits) | set(full_hits):
-        merged_hits[doc_type] = (top_hits.get(doc_type, 0) * 2) + full_hits.get(doc_type, 0)
+    for doc_type in _DOC_TYPE_KEYWORDS:
+        if doc_type in top_hits or doc_type in full_hits:
+            merged_hits[doc_type] = (top_hits.get(doc_type, 0) * 2) + full_hits.get(doc_type, 0)
 
     if not merged_hits:
         return 0.0, "Unklar", []

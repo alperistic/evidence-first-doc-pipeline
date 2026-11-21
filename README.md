@@ -211,9 +211,11 @@ pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest tests/ -q
 ```
 
-The suite runs offline (no Azure calls) in well under a minute: about 1100 tests. One
-segmenter test is marked `xfail(strict=False)` because it is nondeterministic and passes
-in roughly half of isolated runs; it is a known open bug, not a hidden failure.
+The suite runs offline (no Azure calls) in well under a minute: about 1100 tests, none
+skipped or expected to fail. Segmentation is deterministic: one regression test runs the
+same document under several `PYTHONHASHSEED` values in subprocesses, because a set's
+iteration order once decided a doc-type tie and with it whether a contract's annex was
+split off as its own document.
 
 ---
 
@@ -265,7 +267,9 @@ What it is not: a product, a service, or legal advice.
   pipeline itself is not.
 - OCR quality for scanned documents depends entirely on Azure Document Intelligence.
 - Segmentation of multi-document PDFs is heuristic and can misplace a boundary on unusual
-  layouts.
+  layouts. When a page matches two document types equally well, the type declared first
+  in `core/doctype_classifier.py` wins: the result is reproducible, but that fixed order
+  is not always the better fit.
 - The health endpoint (`health.py`, port 8502) is started from `app.py`, and Streamlit
   only runs `app.py` once a browser session connects. Until the first visit, the Docker
   `HEALTHCHECK` sees nothing on 8502 and marks the container unhealthy.

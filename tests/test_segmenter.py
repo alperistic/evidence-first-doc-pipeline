@@ -1,3 +1,7 @@
+import json
+import os
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 import re
@@ -5,10 +9,21 @@ from unittest.mock import patch
 
 import pytest
 
+from core.layout_analyzer import _keyword_score
 from core.segmenter import build_segment_chunks, is_attachment_page, segment_by_document, segment_pages
 
 
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _FIXTURE_DIR = Path(__file__).parent / "fixtures" / "segmenter"
+# Seeds 0, 1, 3, 4 lieferten vor dem Fix 2 Segmente, 2 und 5 das richtige 1 Segment.
+_HASH_SEEDS = (0, 1, 2, 3, 4, 5, 10, 12)
+# Liest Seiten als JSON von stdin, segmentiert, gibt die Seitenbereiche als JSON aus.
+_SEGMENT_RANGES_SCRIPT = (
+    "import json, sys\n"
+    "from core.segmenter import segment_pages\n"
+    "segments = segment_pages(json.load(sys.stdin))\n"
+    "print(json.dumps([[int(s['page_start']), int(s['page_end'])] for s in segments]))\n"
+)
 _TAGGED_PAGE_RE = re.compile(r"\[\[PAGE:(\d+)\]\]")
 
 
@@ -42,6 +57,63 @@ def _fixture_pages(name: str) -> list[dict]:
                 "text": text[start:end].strip(),
             }
         )
+    return pages
+
+
+def _rahmenvertrag_anlage_bankverbindung_pages() -> list[dict]:
+    """41-seitiger IT-Rahmenvertrag, Seite 20 = 'ANLAGE A' (ohne Doppelpunkt) mit
+    Vertragsparteien + Bankverbindung. Auf Seite 20 stehen die Doctype-Keywords von
+    'Anlage' und 'Vertrag' punktgleich - der Fall, dessen Ergebnis früher vom
+    PYTHONHASHSEED abhing."""
+    pages: list[dict] = []
+    # Page 1: Deckblatt mit Vertragsparteien → setzt prev_strong_hits = {Vertragsparteien, zwischen}
+    pages.append({
+        "page_number": 1,
+        "page": 1,
+        "text": (
+            "IT-Rahmenvertrag über IT-Dienstleistungen\n"
+            "Vertragsparteien: [PARTEI_A] und [PARTEI_B]\n"
+            "Zwischen den Vertragsparteien wird folgendes vereinbart."
+        ),
+    })
+    # Pages 2–19: Fließtext mit nur 'zwischen' → prev_strong_hits driftet zu {zwischen}
+    for i in range(2, 20):
+        pages.append({
+            "page_number": i,
+            "page": i,
+            "text": (
+                f"§ {i} Regelungen\n"
+                f"Zwischen Firma A und Firma B gilt:\n"
+                f"Lorem ipsum dolor sit amet, Seite {i}."
+            ),
+        })
+    # Page 20: Anlage ohne Doppelpunkt (nicht is_attachment) + Vertragsparteien (novel nach Seiten
+    # 2-19 die nur 'zwischen' hatten) + Bankverbindung (is_contract_continuation).
+    # Vor Fix D: strong_novel=True → Boundary auf Seite 20 → 2 Segmente; Fallback feuerte nicht.
+    # Nach Fix D ohne continuation_applied-Flag: Boundary unterdrückt → starts={1} →
+    # Fallback feuert mit 40 strong_pages → 14 Segmente.
+    pages.append({
+        "page_number": 20,
+        "page": 20,
+        "text": (
+            "ANLAGE A\n"
+            "Zahlungskonditionen und Vertragsparteien\n"
+            "Vertragsparteien: [PARTEI_A] und [PARTEI_B]\n"
+            "Bankverbindung: IBAN DE12 3456 7890 1234 5678 90\n"
+            "Zahlungsziel: 30 Tage netto nach Rechnungseingang."
+        ),
+    })
+    # Pages 21–41: weitere Vertragsseiten mit 'zwischen'
+    for i in range(21, 42):
+        pages.append({
+            "page_number": i,
+            "page": i,
+            "text": (
+                f"§ {i} Weitere Regelungen\n"
+                f"Zwischen Firma A und Firma B gilt:\n"
+                f"Weitere Bestimmungen des IT-Rahmenvertrags Seite {i}."
+            ),
+        })
     return pages
 
 
@@ -504,60 +576,11 @@ class PR9RahmenvertragSegmentierungTests(unittest.TestCase):
             msg=f"Zahlungsdetails-Seite darf keine Grenze erzeugen: {_segment_debug_snapshot(segments)}",
         )
 
-    @pytest.mark.xfail(strict=False, reason="pre-existing flaky segmenter test – tracked separately")
     def test_rahmenvertrag_novel_vertragsparteien_plus_bankverbindung_stays_single(self):
         """Regression Fix D: Anlage-Seite mit 'Vertragsparteien' (novel) + Bankverbindung darf
         keinen Fallback-Split auslösen.  Vorher (PR#8): 2 Segmente; nach Fix D ohne diesen
         Test: 14 Segmente; Ziel: 1 Segment."""
-        pages: list[dict] = []
-        # Page 1: Deckblatt mit Vertragsparteien → setzt prev_strong_hits = {Vertragsparteien, zwischen}
-        pages.append({
-            "page_number": 1,
-            "page": 1,
-            "text": (
-                "IT-Rahmenvertrag über IT-Dienstleistungen\n"
-                "Vertragsparteien: [PARTEI_A] und [PARTEI_B]\n"
-                "Zwischen den Vertragsparteien wird folgendes vereinbart."
-            ),
-        })
-        # Pages 2–19: Fließtext mit nur 'zwischen' → prev_strong_hits driftet zu {zwischen}
-        for i in range(2, 20):
-            pages.append({
-                "page_number": i,
-                "page": i,
-                "text": (
-                    f"§ {i} Regelungen\n"
-                    f"Zwischen Firma A und Firma B gilt:\n"
-                    f"Lorem ipsum dolor sit amet, Seite {i}."
-                ),
-            })
-        # Page 20: Anlage ohne Doppelpunkt (nicht is_attachment) + Vertragsparteien (novel nach Seiten
-        # 2-19 die nur 'zwischen' hatten) + Bankverbindung (is_contract_continuation).
-        # Vor Fix D: strong_novel=True → Boundary auf Seite 20 → 2 Segmente; Fallback feuerte nicht.
-        # Nach Fix D ohne continuation_applied-Flag: Boundary unterdrückt → starts={1} →
-        # Fallback feuert mit 40 strong_pages → 14 Segmente.
-        pages.append({
-            "page_number": 20,
-            "page": 20,
-            "text": (
-                "ANLAGE A\n"
-                "Zahlungskonditionen und Vertragsparteien\n"
-                "Vertragsparteien: [PARTEI_A] und [PARTEI_B]\n"
-                "Bankverbindung: IBAN DE12 3456 7890 1234 5678 90\n"
-                "Zahlungsziel: 30 Tage netto nach Rechnungseingang."
-            ),
-        })
-        # Pages 21–41: weitere Vertragsseiten mit 'zwischen'
-        for i in range(21, 42):
-            pages.append({
-                "page_number": i,
-                "page": i,
-                "text": (
-                    f"§ {i} Weitere Regelungen\n"
-                    f"Zwischen Firma A und Firma B gilt:\n"
-                    f"Weitere Bestimmungen des IT-Rahmenvertrags Seite {i}."
-                ),
-            })
+        pages = _rahmenvertrag_anlage_bankverbindung_pages()
 
         segments = segment_pages(pages)
 
@@ -570,6 +593,41 @@ class PR9RahmenvertragSegmentierungTests(unittest.TestCase):
                 f"{_segment_debug_snapshot(segments)}"
             ),
         )
+
+    def test_rahmenvertrag_anlage_single_segment_for_every_hash_seed(self):
+        """Regression: das Ergebnis darf nicht von PYTHONHASHSEED abhängen.
+
+        Früher hing der Doctype-Hinweis von Seite 20 (Anlage und Vertrag punktgleich)
+        von der Iterationsreihenfolge eines str-Sets in _keyword_score ab; je nach Seed
+        kam 1 oder 2 Segmente heraus. Der Hash-Seed ist pro Interpreter fest, deshalb
+        läuft jeder Seed in einem eigenen Unterprozess."""
+        pages_json = json.dumps(_rahmenvertrag_anlage_bankverbindung_pages())
+        results: dict[int, list[list[int]]] = {}
+        for seed in _HASH_SEEDS:
+            env = {**os.environ, "PYTHONHASHSEED": str(seed)}
+            proc = subprocess.run(
+                [sys.executable, "-c", _SEGMENT_RANGES_SCRIPT],
+                input=pages_json,
+                capture_output=True,
+                text=True,
+                cwd=_PROJECT_ROOT,
+                env=env,
+                timeout=60,
+                check=False,
+            )
+            self.assertEqual(proc.returncode, 0, msg=f"seed={seed}: {proc.stderr[-2000:]}")
+            results[seed] = json.loads(proc.stdout.strip().splitlines()[-1])
+
+        expected = {seed: [[1, 41]] for seed in _HASH_SEEDS}
+        self.assertEqual(results, expected)
+
+    def test_keyword_score_breaks_ties_in_declaration_order(self):
+        """Gleichstand Anlage/Vertrag → der in _DOC_TYPE_KEYWORDS zuerst deklarierte
+        Typ gewinnt (dieselbe Regel wie _guess_doc_type_from_text), unabhängig von der
+        Reihenfolge, in der die Treffer anfallen."""
+        top_text = "ANLAGE A\nZahlungskonditionen und Vertragsparteien"
+        _, doc_type, _ = _keyword_score(top_text, top_text)
+        self.assertEqual(doc_type, "Anlage")
 
     def test_two_separate_contracts_with_different_parties_stay_two_segments(self):
         """Regression: Zwei echte separate Verträge mit unterschiedlichen Parteien → 2 Segmente."""
