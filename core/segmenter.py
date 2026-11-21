@@ -67,6 +67,9 @@ from core.logging_config import get_logger
 _log = get_logger(__name__)
 
 _GENERIC_FALLBACK_TITLE = "Dokumentsegment"
+# Besides the Vertrag types, doc-type hints a contract-continuation page may carry
+# without starting a new document (see _candidate_boundaries_from_diagnostics).
+_CONTRACT_CONTINUATION_DOC_TYPES = frozenset({"Anlage", "Unklar", ""})
 _GENERATED_TITLE_RE = re.compile(rf"^{_GENERIC_FALLBACK_TITLE}\s+\d+$", re.IGNORECASE)
 _STRONG_MARKER_KEYS = (
     "DOKUMENT START",
@@ -991,11 +994,14 @@ def _candidate_boundaries_from_diagnostics(
             continue
 
         # Payment-detail/billing-recipient pages inside a contract are part of
-        # the parent contract - do not create a boundary here.
+        # the parent contract - do not create a boundary here. An "Anlage" page
+        # qualifies too: an annex carrying the payment terms of the contract it
+        # follows belongs to that contract, the same reasoning as is_attachment
+        # above for headings written "Anlage A:".
         if (
             bool(item.get("is_contract_continuation", False))
             and prev_doc_type in _VERTRAG_DOC_TYPES
-            and (curr_doc_type in _VERTRAG_DOC_TYPES or curr_doc_type in {"Unklar", ""})
+            and (curr_doc_type in _VERTRAG_DOC_TYPES or curr_doc_type in _CONTRACT_CONTINUATION_DOC_TYPES)
             and not cooldown_override
         ):
             continuation_applied = True
